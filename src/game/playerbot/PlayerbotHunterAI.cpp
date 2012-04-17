@@ -1,7 +1,7 @@
 /*
-* Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
-* Copyright (C) 2010 Blueboy
-* Copyright (C) 2011 MangosR2 
+* Copyright (C) 2005-2012 MaNGOS <http://getmangos.com/>
+* Copyright (C) 2012 Playerbot Team
+* Copyright (C) 2012 MangosR2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -19,7 +19,6 @@
 */
 
 // an improved Hunter by rrtn & Runsttren :)
-
 #include "PlayerbotHunterAI.h"
 #include "PlayerbotMgr.h"
 
@@ -105,16 +104,6 @@ bool PlayerbotHunterAI::DoFirstCombatManeuver(Unit *pTarget)
 {
     return false;
 }
-
-bool PlayerbotHunterAI::HasPet(Player* bot)
-{
-    QueryResult* result = CharacterDatabase.PQuery("SELECT * FROM character_pet WHERE owner = '%u' AND (slot = '%u' OR slot = '%u')", bot->GetGUIDLow(), PET_SAVE_AS_CURRENT, PET_SAVE_NOT_IN_SLOT);
-
-    if (result)
-        return true;  //hunter has current pet
-    else
-        return false;  //hunter either has no pet or stabled
-} // end HasPet
 
 void PlayerbotHunterAI::DoNextCombatManeuver(Unit *pTarget)
 {
@@ -337,7 +326,7 @@ void PlayerbotHunterAI::DoNonCombatActions()
     }
 
     // check for pet
-    if (PET_SUMMON > 0 && !m_petSummonFailed && HasPet(m_bot))
+    if (PET_SUMMON > 0 && !m_petSummonFailed && m_bot->GetPetGuid())
     {
         // we can summon pet, and no critical summon errors before
         Pet *pet = m_bot->GetPet();

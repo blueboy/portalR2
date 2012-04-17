@@ -1,6 +1,7 @@
 /*
-* Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
-* Copyright (C) 2011 IXC_Project // MangosR2
+* Copyright (C) 2005-2012 MaNGOS <http://getmangos.com/>
+* Copyright (C) 2012 Playerbot Team
+* Copyright (C) 2012 MangosR2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 */
 
 #include "PlayerbotPriestAI.h"
+#include "../SpellAuras.h"
 
 class PlayerbotAI;
 
@@ -41,6 +43,7 @@ PlayerbotPriestAI::PlayerbotPriestAI(Player* const master, Player* const bot, Pl
     CIRCLE_OF_HEALING             = ai->initSpell(CIRCLE_OF_HEALING_1);
     BINDING_HEAL                  = ai->initSpell(BINDING_HEAL_1);
     PRAYER_OF_MENDING             = ai->initSpell(PRAYER_OF_MENDING_1);
+    CURE_DISEASE                  = ai->initSpell(CURE_DISEASE_1);
 
     // SHADOW
     FADE                          = ai->initSpell(FADE_1);
@@ -91,6 +94,23 @@ bool PlayerbotPriestAI::HealTarget(Unit* target)
 {
     PlayerbotAI* ai = GetAI();
     uint8 hp = target->GetHealth() * 100 / target->GetMaxHealth();
+    uint8 hpSelf = GetAI()->GetHealthPercent();
+
+    if (CURE_DISEASE > 0 && ai->GetCombatOrder() != PlayerbotAI::ORDERS_NODISPEL)
+    {
+        uint32 dispelMask  = GetDispellMask(DISPEL_DISEASE);
+        Unit::SpellAuraHolderMap const& auras = target->GetSpellAuraHolderMap();
+        for (Unit::SpellAuraHolderMap::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
+        {
+            SpellAuraHolderPtr holder = itr->second;
+            if ((1 << holder->GetSpellProto()->Dispel) & dispelMask)
+            {
+                if (holder->GetSpellProto()->Dispel == DISPEL_DISEASE)
+                    ai->CastSpell(CURE_DISEASE, *target);
+                return false;
+            }
+        }
+    }
 
     if (hp >= 80)
         return false;
@@ -140,15 +160,17 @@ void PlayerbotPriestAI::DoNextCombatManeuver(Unit *pTarget)
     Player *m_bot = GetPlayerBot();
     Group *m_group = m_bot->GetGroup();
 
-    // Heal myself
-    if (ai->GetHealthPercent() < 15 && FADE > 0 && !m_bot->HasAura(FADE, EFFECT_INDEX_0))
+    // Fade has nothing to do with health and everything to do with having aggro/threat
+    Unit *newTarget = ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE) (PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
+    if (newTarget && FADE > 0 && !m_bot->HasAura(FADE, EFFECT_INDEX_0))
     {
         ai->TellMaster("I'm casting fade.");
         ai->CastSpell(FADE, *m_bot);
     }
+    // Heal myself
     else if (ai->GetHealthPercent() < 25 && POWER_WORD_SHIELD > 0 && !m_bot->HasAura(POWER_WORD_SHIELD, EFFECT_INDEX_0))
     {
-        ai->TellMaster("I'm casting pws on myself.");
+        ai->TellMaster("I'm casting PW:S on myself.");
         ai->CastSpell(POWER_WORD_SHIELD);
     }
     else if (ai->GetHealthPercent() < 35 && DESPERATE_PRAYER > 0)
@@ -156,8 +178,8 @@ void PlayerbotPriestAI::DoNextCombatManeuver(Unit *pTarget)
         ai->TellMaster("I'm casting desperate prayer.");
         ai->CastSpell(DESPERATE_PRAYER, *m_bot);
     }
-    else if (ai->GetHealthPercent() < 80)
-        HealTarget (m_bot);
+    else if (ai->GetHealthPercent() < 60 || (BINDING_HEAL == 0 && ai->GetHealthPercent() < 80))
+        HealTarget(m_bot);
 
     // Heal master
     uint32 masterHP = GetMaster()->GetHealth() * 100 / GetMaster()->GetMaxHealth();
@@ -165,9 +187,17 @@ void PlayerbotPriestAI::DoNextCombatManeuver(Unit *pTarget)
     {
         if (masterHP < 25 && POWER_WORD_SHIELD > 0 && !GetMaster()->HasAura(POWER_WORD_SHIELD, EFFECT_INDEX_0))
             ai->CastSpell(POWER_WORD_SHIELD, *(GetMaster()));
-        else if (masterHP < 80)
-            HealTarget (GetMaster());
+        else if (masterHP < 25 || ((GetAI()->GetCombatOrder() & PlayerbotAI::ORDERS_HEAL) && masterHP < 80))
+            HealTarget(GetMaster());
     }
+
+    // TODO: Prioritize group healing in some way. If 3 members (including master/self) should be healed, pick one of these:
+    // Group heal. Not really useful until a group check is available?
+    //else if (hp < 40 && PRAYER_OF_HEALING > 0 && ai->CastSpell(PRAYER_OF_HEALING, *target))
+    //    return true;
+    // Group heal. Not really useful until a group check is available?
+    //else if (hp < 50 && CIRCLE_OF_HEALING > 0 && ai->CastSpell(CIRCLE_OF_HEALING, *target))
+    //    return true;
 
     // Heal group
     if (m_group)
@@ -180,14 +210,16 @@ void PlayerbotPriestAI::DoNextCombatManeuver(Unit *pTarget)
                 continue;
 
             uint32 memberHP = m_groupMember->GetHealth() * 100 / m_groupMember->GetMaxHealth();
-            if (memberHP < 25)
+            if (memberHP < 25 && POWER_WORD_SHIELD > 0 && !m_groupMember->HasAura(POWER_WORD_SHIELD, EFFECT_INDEX_0))
+                ai->CastSpell(POWER_WORD_SHIELD, *(GetMaster()));
+            else if (memberHP < 25 || ((GetAI()->GetCombatOrder() & PlayerbotAI::ORDERS_HEAL) && memberHP < 80))
                 HealTarget(m_groupMember);
         }
     }
 
-    if (ai->GetCombatOrder() == PlayerbotAI::ORDERS_HEAL)  // && ai->GetMovementOrder() == PlayerbotAI::MOVEMENT_STAY)
+    if (ai->GetCombatOrder() == PlayerbotAI::ORDERS_HEAL)
         SpellSequence = SPELL_HOLY;
-    else if (ai->GetCombatOrder() == PlayerbotAI::ORDERS_ASSIST)  // && ai->GetMovementOrder() == PlayerbotAI::MOVEMENT_STAY)
+    else if (ai->GetCombatOrder() == PlayerbotAI::ORDERS_ASSIST)
         SpellSequence = SPELL_SHADOWMAGIC;
     else
         SpellSequence = SPELL_HOLY;
@@ -387,15 +419,17 @@ void PlayerbotPriestAI::DoNonCombatActions()
     if (master->GetGroup())
     {
         // Buff master with group buffs
-        if (!master->IsInDuel(master))
-            if (master->isAlive())
-            {
-                if (PRAYER_OF_FORTITUDE && ai->HasSpellReagents(PRAYER_OF_FORTITUDE) && ai->Buff(PRAYER_OF_FORTITUDE, master))
-                    return;
+        if (!master->IsInDuel(master) && master->isAlive())
+        {
+            if (PRAYER_OF_FORTITUDE && ai->HasSpellReagents(PRAYER_OF_FORTITUDE) && ai->Buff(PRAYER_OF_FORTITUDE, master))
+                return;
 
-                 if (PRAYER_OF_SPIRIT && ai->HasSpellReagents(PRAYER_OF_SPIRIT) && ai->Buff(PRAYER_OF_SPIRIT, master))
-                    return;
-            }
+            if (PRAYER_OF_SPIRIT && ai->HasSpellReagents(PRAYER_OF_SPIRIT) && ai->Buff(PRAYER_OF_SPIRIT, master))
+                return;
+
+            if (PRAYER_OF_SHADOW_PROTECTION && ai->HasSpellReagents(PRAYER_OF_SHADOW_PROTECTION) && ai->Buff(PRAYER_OF_SHADOW_PROTECTION, master))
+                return;
+        }
 
         Group::MemberSlotList const& groupSlot = GetMaster()->GetGroup()->GetMemberSlots();
         for (Group::member_citerator itr = groupSlot.begin(); itr != groupSlot.end(); itr++)
@@ -440,8 +474,7 @@ void PlayerbotPriestAI::DoNonCombatActions()
             if (HealTarget(master))
                 return;
         }
-        else
-        if (ai->CastSpell(RESURRECTION, *master))
+        else if (ai->CastSpell(RESURRECTION, *master))
             ai->TellMaster("Resurrecting you, Master.");
     }
 
@@ -453,7 +486,7 @@ bool PlayerbotPriestAI::BuffPlayer(Player* target)
     PlayerbotAI * ai = GetAI();
     Pet * pet = target->GetPet();
 
-    if (pet && ai->Buff(POWER_WORD_FORTITUDE, pet))
+    if ((pet && !pet->HasAuraType(SPELL_AURA_MOD_UNATTACKABLE)) && ai->Buff(POWER_WORD_FORTITUDE, pet))
         return true;
 
     if (ai->Buff(POWER_WORD_FORTITUDE, target))

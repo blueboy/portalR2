@@ -1,7 +1,7 @@
 /*
-* Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
-* Copyright (C) 2010 Blueboy
-* Copyright (C) 2011 MangosR2 
+* Copyright (C) 2005-2012 MaNGOS <http://getmangos.com/>
+* Copyright (C) 2012 Playerbot Team
+* Copyright (C) 2012 MangosR2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -18,39 +18,62 @@
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+#include "Config/Config.h"
+#include "config.h"
+
 #include "../Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
 #include "WorldPacket.h"
 #include "../Chat.h"
-#include "../AccountMgr.h"
 #include "../ObjectMgr.h"
 #include "../GossipDef.h"
-#include "../Chat.h"
 #include "../Language.h"
 #include "../WaypointMovementGenerator.h"
-#include "../Guild.h"
-#include "../World.h"
 
 class LoginQueryHolder;
 class CharacterHandler;
 
+Config botConfig;
+
+void PlayerbotMgr::SetInitialWorldSettings()
+{
+    //Get playerbot configuration file
+    if (!botConfig.SetSource(_PLAYERBOT_CONFIG))
+        sLog.outError("Playerbot: Unable to open configuration file. Database will be unaccessible. Configuration values will use default.");
+    else
+        sLog.outString("Playerbot: Using configuration file %s", _PLAYERBOT_CONFIG);
+
+    //Check playerbot config file version
+    if (botConfig.GetIntDefault("ConfVersion", 0) != PLAYERBOT_CONF_VERSION)
+        sLog.outError("Playerbot: Configuration file version doesn't match expected version. Some config variables may be wrong or missing.");
+}
 
 PlayerbotMgr::PlayerbotMgr(Player* const master) : m_master(master)
 {
-    m_botCount = 0;
-
     // load config variables
-    m_confMaxNumBots = sWorld.getConfig(CONFIG_UINT32_PLAYERBOT_MAXBOTS);
-    m_confDebugWhisper = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_DEBUGWHISPER);
-    m_confFollowDistance[0] = sWorld.getConfig(CONFIG_FLOAT_PLAYERBOT_MINDISTANCE);
-    m_confFollowDistance[1] = sWorld.getConfig(CONFIG_FLOAT_PLAYERBOT_MAXDISTANCE);
-    m_confCollectCombat = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_COLLECT_COMBAT);
-    m_confCollectQuest = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_COLLECT_QUESTS);
-    m_confCollectProfession = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_COLLECT_PROFESSION);
-    m_confCollectLoot = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_COLLECT_LOOT);
-    m_confCollectSkin = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_COLLECT_SKIN);
-    m_confCollectObjects = sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_COLLECT_OBJECTS);
+    m_confMaxNumBots = botConfig.GetIntDefault("PlayerbotAI.MaxNumBots", 9);
+    m_confDebugWhisper = botConfig.GetBoolDefault("PlayerbotAI.DebugWhisper", false);
+    m_confFollowDistance[0] = botConfig.GetFloatDefault("PlayerbotAI.FollowDistanceMin", 0.5f);
+    m_confFollowDistance[1] = botConfig.GetFloatDefault("PlayerbotAI.FollowDistanceMax", 1.0f);
+    m_confCollectCombat = botConfig.GetBoolDefault("PlayerbotAI.Collect.Combat", true);
+    m_confCollectQuest = botConfig.GetBoolDefault("PlayerbotAI.Collect.Quest", true);
+    m_confCollectProfession = botConfig.GetBoolDefault("PlayerbotAI.Collect.Profession", true);
+    m_confCollectLoot = botConfig.GetBoolDefault("PlayerbotAI.Collect.Loot", true);
+    m_confCollectSkin = botConfig.GetBoolDefault("PlayerbotAI.Collect.Skin", true);
+    m_confCollectObjects = botConfig.GetBoolDefault("PlayerbotAI.Collect.Objects", true);
+    m_confCollectDistanceMax = botConfig.GetIntDefault("PlayerbotAI.Collect.DistanceMax", 50);
+    if (m_confCollectDistanceMax > 100)
+    {
+        sLog.outError("Playerbot: PlayerbotAI.Collect.DistanceMax higher than allowed. Using 100");
+        m_confCollectDistanceMax = 100;
+    }
+    m_confCollectDistance = botConfig.GetIntDefault("PlayerbotAI.Collect.Distance", 25);
+    if (m_confCollectDistance > m_confCollectDistanceMax)
+    {
+        sLog.outError("Playerbot: PlayerbotAI.Collect.Distance higher than PlayerbotAI.Collect.DistanceMax. Using DistanceMax value");
+        m_confCollectDistance = m_confCollectDistanceMax;
+    }
 }
 
 PlayerbotMgr::~PlayerbotMgr()
@@ -77,7 +100,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
 
             p >> guid >> nodes[0] >> nodes[1];
 
-            DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_ACTIVATETAXI from %d to %d", nodes[0], nodes[1]);
+            // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_ACTIVATETAXI from %d to %d", nodes[0], nodes[1]);
 
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
@@ -125,7 +148,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             if (nodes.empty())
                 return;
 
-            DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_ACTIVATETAXIEXPRESS from %d to %d", nodes.front(), nodes.back());
+            // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_ACTIVATETAXIEXPRESS from %d to %d", nodes.front(), nodes.back());
 
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
@@ -152,7 +175,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
 
         case CMSG_MOVE_SPLINE_DONE:
         {
-            DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_MOVE_SPLINE_DONE");
+            // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_MOVE_SPLINE_DONE");
 
             WorldPacket p(packet);
             p.rpos(0); // reset reader
@@ -214,7 +237,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                             bot->GetSession()->SendPacket(&data);
                         }
 
-                    DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_MOVE_SPLINE_DONE Taxi has to go from %u to %u", sourcenode, destinationnode);
+                    // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_MOVE_SPLINE_DONE Taxi has to go from %u to %u", sourcenode, destinationnode);
 
                     uint32 mountDisplayId = sObjectMgr.GetTaxiMountDisplayId(sourcenode, bot->GetTeam());
 
@@ -236,7 +259,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             return;
         }
 
-        // if master is logging out, log out all bots & remove them from group
+        // if master is logging out, log out all bots
         case CMSG_LOGOUT_REQUEST:
         {
             LogoutAllBots();
@@ -464,7 +487,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             uint32 unk1;
             p >> guid >> quest >> unk1;
 
-            DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_QUESTGIVER_ACCEPT_QUEST npc = %s, quest = %u, unk1 = %u", guid.GetString().c_str(), quest, unk1);
+            // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_QUESTGIVER_ACCEPT_QUEST npc = %s, quest = %u, unk1 = %u", guid.GetString().c_str(), quest, unk1);
 
             Quest const* qInfo = sObjectMgr.GetQuestTemplate(quest);
             if (qInfo)
@@ -519,9 +542,14 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
                 Player* const bot = it->second;
+                if (!bot)
+                    continue;
 
-                p.rpos(0);         // reset reader
-                bot->GetSession()->HandleAreaTriggerOpcode(p);
+                if (bot->IsWithinDistInMap(GetMaster(), 50))
+                {
+                    p.rpos(0);         // reset reader
+                    bot->GetSession()->HandleAreaTriggerOpcode(p);
+                }
             }
             return;
         }
@@ -534,7 +562,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             ObjectGuid npcGUID;
             p >> npcGUID >> quest;
 
-            DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_QUESTGIVER_COMPLETE_QUEST npc = %s, quest = %u", npcGUID.GetString().c_str(), quest);
+            // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_QUESTGIVER_COMPLETE_QUEST npc = %s, quest = %u", npcGUID.GetString().c_str(), quest);
 
             WorldObject* pNpc = m_master->GetMap()->GetWorldObject(npcGUID);
             if (!pNpc)
@@ -551,20 +579,26 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
 
         case CMSG_LOOT_ROLL:
         {
-
             WorldPacket p(packet);    //WorldPacket packet for CMSG_LOOT_ROLL, (8+4+1)
             ObjectGuid Guid;
-            uint32 NumberOfPlayers;
+            uint32 itemSlot;
             uint8 rollType;
-            p.rpos(0);    //reset packet pointer
-            p >> Guid;    //guid of the item rolled
-            p >> NumberOfPlayers;    //number of players invited to roll
+            p.rpos(0);        //reset packet pointer
+            p >> Guid;        //guid of the lootable target
+            p >> itemSlot;    //number of players invited to roll
             p >> rollType;    //need,greed or pass on roll
+
+            Creature *c = m_master->GetMap()->GetCreature(Guid);
+            if (!c)
+                return;
+
+            Loot *loot = &c->loot;
+
+            LootItem& lootItem = loot->items[itemSlot];
 
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
-
-                uint32 choice;
+                uint32 choice = 0;
 
                 Player* const bot = it->second;
                 if (!bot)
@@ -574,9 +608,23 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 if (!group)
                     return;
 
-                (bot->GetPlayerbotAI()->CanStore()) ? choice = urand(0, 3) : choice = 0;  // pass = 0, need = 1, greed = 2, disenchant = 3
+                ItemPrototype const *pProto = ObjectMgr::GetItemPrototype(lootItem.itemid);
+                if (!pProto)
+                    return;
 
-                group->CountRollVote(bot, Guid, NumberOfPlayers, RollVote(choice));
+                if (bot->GetPlayerbotAI()->CanStore())
+                {
+                    if (bot->CanUseItem(pProto) == EQUIP_ERR_OK && bot->GetPlayerbotAI()->IsItemUseful(lootItem.itemid))
+                        choice = 1;  // Need
+                    else if (bot->HasSkill(SKILL_ENCHANTING))
+                        choice = 3;  // Disenchant
+                    else
+                        choice = 2;  // Greed
+                }
+                else
+                    choice = 0;  // Pass
+
+                group->CountRollVote(bot, Guid, itemSlot, RollVote(choice));
 
                 switch (choice)
                 {
@@ -590,10 +638,11 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             }
             return;
         }
+
         // Handle GOSSIP activate actions, prior to GOSSIP select menu actions
         case CMSG_GOSSIP_HELLO:
         {
-            DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_GOSSIP_HELLO");
+            // DEBUG_LOG ("[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_GOSSIP_HELLO");
 
             WorldPacket p(packet);    //WorldPacket packet for CMSG_GOSSIP_HELLO, (8)
             ObjectGuid guid;
@@ -638,6 +687,10 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                         case GOSSIP_OPTION_VENDOR:
                         {
                             // bot->GetPlayerbotAI()->TellMaster("PlayerbotMgr:GOSSIP_OPTION_VENDOR");
+                            if (!botConfig.GetBoolDefault("PlayerbotAI.SellGarbage", true))
+                                return;
+
+                            bot->GetPlayerbotAI()->SellGarbage();
                             break;
                         }
                         case GOSSIP_OPTION_STABLEPET:
@@ -681,7 +734,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
 
         case CMSG_LIST_INVENTORY:
         {
-            if (sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_SELL_TRASH))
+            if (!botConfig.GetBoolDefault("PlayerbotAI.SellGarbage", true))
                 return;
 
             WorldPacket p(packet);
@@ -777,16 +830,11 @@ void PlayerbotMgr::LogoutAllBots()
     {
         PlayerBotMap::const_iterator itr = GetPlayerBotsBegin();
         if (itr == GetPlayerBotsEnd()) break;
-        if (Player* bot = itr->second)
-        {
-            LogoutPlayerBot(bot->GetObjectGuid());
-            m_botCount--;
-        }
+        Player* bot = itr->second;
+        LogoutPlayerBot(bot->GetObjectGuid());
     }
-    RemoveAllBotsFromGroup();                   ///-> If bot are logging out remove them group
+    RemoveAllBotsFromGroup();
 }
-
-
 
 void PlayerbotMgr::Stay()
 {
@@ -796,7 +844,6 @@ void PlayerbotMgr::Stay()
         bot->GetMotionMaster()->Clear();
     }
 }
-
 
 // Playerbot mod: logs out a Playerbot.
 void PlayerbotMgr::LogoutPlayerBot(ObjectGuid guid)
@@ -839,17 +886,15 @@ void PlayerbotMgr::OnBotLogin(Player * const bot)
     const ObjectGuid masterGuid = m_master->GetObjectGuid();
     if (m_master->GetGroup() &&
         !m_master->GetGroup()->IsLeader(masterGuid))
+        // But only do so if one of the master's bots is leader
+        for (PlayerBotMap::const_iterator itr = GetPlayerBotsBegin(); itr != GetPlayerBotsEnd(); itr++)
         {
-                // But only do so if one of the master's bots is leader
-                for (PlayerBotMap::const_iterator itr = GetPlayerBotsBegin(); itr != GetPlayerBotsEnd(); itr++)
-                {
-                        Player* bot = itr->second;
-                        if ( m_master->GetGroup()->IsLeader(bot->GetObjectGuid()) )
-                        {
-                                m_master->GetGroup()->ChangeLeader(masterGuid);
-                                break;
-                        }
-                }
+            Player* bot = itr->second;
+            if (m_master->GetGroup()->IsLeader(bot->GetObjectGuid()))
+            {
+                m_master->GetGroup()->ChangeLeader(masterGuid);
+                break;
+            }
         }
 }
 
@@ -861,6 +906,50 @@ void PlayerbotMgr::RemoveAllBotsFromGroup()
         if (bot->IsInSameGroupWith(m_master))
             m_master->GetGroup()->RemoveMember(bot->GetObjectGuid(), 0);
     }
+}
+
+void Creature::LoadBotMenu(Player *pPlayer)
+{
+
+    if (pPlayer->GetPlayerbotAI()) return;
+    ObjectGuid guid = pPlayer->GetObjectGuid();
+    uint32 accountId = sAccountMgr.GetPlayerAccountIdByGUID(guid);
+    QueryResult *result = CharacterDatabase.PQuery("SELECT guid, name FROM characters WHERE account='%d'", accountId);
+    do
+    {
+        Field *fields = result->Fetch();
+        ObjectGuid guidlo = ObjectGuid(fields[0].GetUInt64());
+        std::string name = fields[1].GetString();
+        std::string word = "";
+
+        if ((guid == ObjectGuid()) || (guid == guidlo))
+        {
+            //not found or himself
+        }
+        else
+        {
+            // if(sConfig.GetBoolDefault("PlayerbotAI.DisableBots", false)) return;
+            // create the manager if it doesn't already exist
+            if (!pPlayer->GetPlayerbotMgr())
+                pPlayer->SetPlayerbotMgr(new PlayerbotMgr(pPlayer));
+            if (pPlayer->GetPlayerbotMgr()->GetPlayerBot(guidlo) == NULL) // add (if not already in game)
+            {
+                word += "Recruit ";
+                word += name;
+                word += " as a Bot.";
+                pPlayer->PlayerTalkClass->GetGossipMenu().AddMenuItem((uint8) 9, word, guidlo, GOSSIP_OPTION_BOT, word, false);
+            }
+            else if (pPlayer->GetPlayerbotMgr()->GetPlayerBot(guidlo) != NULL) // remove (if in game)
+            {
+                word += "Dismiss ";
+                word += name;
+                word += " from duty.";
+                pPlayer->PlayerTalkClass->GetGossipMenu().AddMenuItem((uint8) 0, word, guidlo, GOSSIP_OPTION_BOT, word, false);
+            }
+        }
+    }
+    while (result->NextRow());
+    delete result;
 }
 
 void Player::skill(std::list<uint32>& m_spellsToLearn)
@@ -878,7 +967,6 @@ void Player::skill(std::list<uint32>& m_spellsToLearn)
 
 void Player::MakeTalentGlyphLink(std::ostringstream &out)
 {
-
     // |cff4e96f7|Htalent:1396:4|h[Unleashed Fury]|h|r
     // |cff66bbff|Hglyph:23:460|h[Glyph of Fortitude]|h|r
 
@@ -905,7 +993,7 @@ void Player::MakeTalentGlyphLink(std::ostringstream &out)
                     if (talent.talentEntry->TalentTab != talentTabId)
                         continue;
 
-                    TalentEntry const *talentInfo = sTalentStore.LookupEntry(talent.talentEntry->TalentID);
+                    TalentEntry const* talentInfo = sTalentStore.LookupEntry(talent.talentEntry->TalentID);
 
                     SpellEntry const* spell_entry = sSpellStore.LookupEntry(talentInfo->RankID[talent.currentRank]);
 
@@ -998,14 +1086,51 @@ bool Player::requiredQuests(const char* pQuestIdString)
     return false;
 }
 
+void Player::UpdateMail()
+{
+    // save money,items and mail to prevent cheating
+    CharacterDatabase.BeginTransaction();
+    this->SaveGoldToDB();
+    this->SaveInventoryAndGoldToDB();
+    this->_SaveMail();
+    CharacterDatabase.CommitTransaction();
+}
+
+//See MainSpec enum in PlayerbotAI.h for details on class return values
+uint32 Player::GetSpec()
+{
+    uint32 row = 0, spec = 0;
+
+    //Iterate through the 3 talent trees
+    for (uint32 i = 0; i < 3; ++i)
+    {
+        for (PlayerTalentMap::iterator iter = m_talents[m_activeSpec].begin(); iter != m_talents[m_activeSpec].end(); ++iter)
+        {
+            PlayerTalent talent = (*iter).second;
+
+            //If current talent is deeper into a tree, that is our new max talent
+            if (talent.talentEntry->Row > row) {
+                row = talent.talentEntry->Row;
+
+                //Set the tree the deepest talent is on
+                spec = talent.talentEntry->TalentTab;
+            }
+        }
+    }
+
+    //Return the tree with the deepest talent
+    return spec;
+}
+
 bool ChatHandler::HandlePlayerbotCommand(char* args)
 {
-    if (sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_DISABLE))
-    {
-        PSendSysMessage("|cffff0000Playerbot system is currently disabled!");
-        SetSentErrorMessage(true);
-        return false;
-    }
+    if (!(m_session->GetSecurity() > SEC_PLAYER))
+        if (botConfig.GetBoolDefault("PlayerbotAI.DisableBots", false))
+        {
+            PSendSysMessage("|cffff0000Playerbot system is currently disabled!");
+            SetSentErrorMessage(true);
+            return false;
+        }
 
     if (!m_session)
     {
@@ -1047,26 +1172,9 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
     uint32 accountId = sAccountMgr.GetPlayerAccountIdByGUID(guid);
     if (accountId != m_session->GetAccountId())
     {
-        if (!sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_SHAREDBOTS))
-        {
-            PSendSysMessage("|cffff0000You may only add bots from the same account.");
-            SetSentErrorMessage(true);
-            return false;
-        }
-
-        QueryResult *resultsocial = CharacterDatabase.PQuery("SELECT COUNT(*) FROM character_social s, characters c WHERE s.guid=c.guid AND c.online = 0 AND flags & 1 AND s.note "_LIKE_" "_CONCAT3_("'%%'","'shared'","'%%'")" AND s.friend = '%u' AND s.guid = '%llu'", m_session->GetPlayer()->GetGUIDLow(), guid.GetRawValue());
-        if (resultsocial)
-        {
-            Field *fields = resultsocial->Fetch();
-            if (fields[0].GetUInt32() == 0 && (cmdStr == "add" || cmdStr == "login"))
-            {
-                PSendSysMessage("|cffff0000You may only add bots from the same account or a friend's character that contains 'shared' in the notes on their friend list while not online.");
-                SetSentErrorMessage(true);
-                delete resultsocial;
-                return false;
-            }
-        }
-        delete resultsocial;
+        PSendSysMessage("|cffff0000You may only add bots from the same account.");
+        SetSentErrorMessage(true);
+        return false;
     }
 
     // create the playerbot manager if it doesn't already exist
@@ -1077,32 +1185,30 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
         m_session->GetPlayer()->SetPlayerbotMgr(mgr);
     }
 
-    if (!(m_session->GetSecurity() > SEC_PLAYER))
+    QueryResult *resultchar = CharacterDatabase.PQuery("SELECT COUNT(*) FROM characters WHERE online = '1' AND account = '%u'", m_session->GetAccountId());
+    if (resultchar)
     {
-        int maxnum = sWorld.getConfig(CONFIG_UINT32_PLAYERBOT_MAXBOTS);
-        int charcount = m_session->GetPlayer()->GetPlayerbotMgr()->GetBotCount();
-        if (charcount >= maxnum && (cmdStr == "add" || cmdStr == "login"))
-        {
-            PSendSysMessage("|cffff0000You cannot summon anymore bots.(Current Max: |cffffffff%u)",maxnum);
-            SetSentErrorMessage(true);
-            return false;
-        }
+        Field *fields = resultchar->Fetch();
+        int acctcharcount = fields[0].GetUInt32();
+        int maxnum = botConfig.GetIntDefault("PlayerbotAI.MaxNumBots", 9);
+        if (!(m_session->GetSecurity() > SEC_PLAYER))
+            if (acctcharcount > maxnum && (cmdStr == "add" || cmdStr == "login"))
+            {
+                PSendSysMessage("|cffff0000You cannot summon anymore bots.(Current Max: |cffffffff%u)", maxnum);
+                SetSentErrorMessage(true);
+                delete resultchar;
+                return false;
+            }
+        delete resultchar;
     }
 
-    QueryResult *resultlvl = CharacterDatabase.PQuery("SELECT level, name, race FROM characters WHERE guid = '%u'", guid.GetCounter());
+    QueryResult *resultlvl = CharacterDatabase.PQuery("SELECT level,name FROM characters WHERE guid = '%u'", guid.GetCounter());
     if (resultlvl)
     {
         Field *fields = resultlvl->Fetch();
         int charlvl = fields[0].GetUInt32();
-        uint32 race = fields[2].GetUInt32();
-        Team master_team = m_session->GetPlayer()->GetTeam();
-        Team bot_team = HORDE;
-        if (RACEMASK_ALLIANCE & (1 << (race-1)))
-            bot_team = ALLIANCE;
-        int maxlvl = sWorld.getConfig(CONFIG_UINT32_PLAYERBOT_RESTRICTLEVEL);
-        int minlvl = sWorld.getConfig(CONFIG_UINT32_PLAYERBOT_MINBOTLEVEL);
+        int maxlvl = botConfig.GetIntDefault("PlayerbotAI.RestrictBotLevel", 80);
         if (!(m_session->GetSecurity() > SEC_PLAYER))
-        {
             if (charlvl > maxlvl)
             {
                 PSendSysMessage("|cffff0000You cannot summon |cffffffff[%s]|cffff0000, it's level is too high.(Current Max:lvl |cffffffff%u)", fields[1].GetString(), maxlvl);
@@ -1110,21 +1216,6 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
                 delete resultlvl;
                 return false;
             }
-            if (charlvl < minlvl)
-            {
-                PSendSysMessage("|cffff0000You cannot summon |cffffffff[%s]|cffff0000, it's level is too low.(Current Min:lvl |cffffffff%u)", fields[1].GetString(), minlvl);
-                SetSentErrorMessage(true);
-                delete resultlvl;
-                return false;
-            }
-            if (!sWorld.getConfig(CONFIG_BOOL_PLAYERBOT_ALLOW_SUMMON_OPPOSITE_FACTION) && bot_team != master_team)
-            {
-                PSendSysMessage("|cffff0000You cannot summon |cffffffff[%s]|cffff0000, it is from opposite faction.", fields[1].GetString());
-                SetSentErrorMessage(true);
-                delete resultlvl;
-                return false;
-            }
-        }
         delete resultlvl;
     }
     // end of gmconfig patch
@@ -1139,7 +1230,6 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
         CharacterDatabase.DirectPExecute("UPDATE characters SET online = 1 WHERE guid = '%u'", guid.GetCounter());
         mgr->AddPlayerBot(guid);
         PSendSysMessage("Bot added successfully.");
-        ++mgr->m_botCount;
     }
     else if (cmdStr == "remove" || cmdStr == "logout")
     {
@@ -1152,7 +1242,6 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
         CharacterDatabase.DirectPExecute("UPDATE characters SET online = 0 WHERE guid = '%u'", guid.GetCounter());
         mgr->LogoutPlayerBot(guid);
         PSendSysMessage("Bot removed successfully.");
-        --mgr->m_botCount;
     }
     else if (cmdStr == "co" || cmdStr == "combatorder")
     {

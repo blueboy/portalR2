@@ -1836,7 +1836,7 @@
 			</File>
 		</Filter>
 		<Filter
-			Name="PlayerBot"
+			Name="playerbot"
 			>
 			<File
 				RelativePath="..\..\src\game\playerbot\PlayerbotAI.cpp"

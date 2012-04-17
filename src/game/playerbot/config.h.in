@@ -18,22 +18,19 @@
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include "PlayerbotClassAI.h"
-#include "Common.h"
+#ifndef PB_CONFIG_H
+#define PB_CONFIG_H
 
-PlayerbotClassAI::PlayerbotClassAI(Player* const master, Player* const bot, PlayerbotAI* const ai) : m_master(master), m_bot(bot), m_ai(ai) {}
-PlayerbotClassAI::~PlayerbotClassAI() {}
+#include "Platform/CompilerDefs.h"
 
-bool PlayerbotClassAI::DoFirstCombatManeuver(Unit *)
-{
-    // return false, if done with opening moves/spells
-    return false;
-}
-void PlayerbotClassAI::DoNextCombatManeuver(Unit *) {}
+// Format is YYYYMMDDRR where RR is the change in the conf file
+// for that day.
+#define PLAYERBOT_CONF_VERSION    2011091201
 
-void PlayerbotClassAI::DoNonCombatActions() {}
+#if PLATFORM == PLATFORM_WINDOWS
+  #define _PLAYERBOT_CONFIG  "playerbot.conf"
+#else
+  #define _PLAYERBOT_CONFIG  SYSCONFDIR"playerbot.conf"
+#endif
 
-bool PlayerbotClassAI::BuffPlayer(Player* target)
-{
-    return false;
-}
+#endif

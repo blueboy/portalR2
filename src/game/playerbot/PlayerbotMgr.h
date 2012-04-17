@@ -1,7 +1,7 @@
 /*
-* Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
-* Copyright (C) 2010 Blueboy
-* Copyright (C) 2011 MangosR2 
+* Copyright (C) 2005-2012 MaNGOS <http://getmangos.com/>
+* Copyright (C) 2012 Playerbot Team
+* Copyright (C) 2012 MangosR2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -28,12 +28,15 @@ class Player;
 class Unit;
 class Object;
 class Item;
-class PlayerbotClassAI;
 
 typedef UNORDERED_MAP<ObjectGuid, Player*> PlayerBotMap;
 
 class MANGOS_DLL_SPEC PlayerbotMgr
 {
+    // static functions, available without a PlayerbotMgr instance
+public:
+    static void SetInitialWorldSettings();
+
 public:
     PlayerbotMgr(Player * const master);
     virtual ~PlayerbotMgr();
@@ -51,11 +54,11 @@ public:
 
     void AddPlayerBot(ObjectGuid guid);
     void LogoutPlayerBot(ObjectGuid guid);
-    Player* GetPlayerBot (ObjectGuid guid) const;
+    Player* GetPlayerBot(ObjectGuid guid) const;
     Player* GetMaster() const { return m_master; };
+
     PlayerBotMap::const_iterator GetPlayerBotsBegin() const { return m_playerBots.begin(); }
     PlayerBotMap::const_iterator GetPlayerBotsEnd()   const { return m_playerBots.end();   }
-    int GetBotCount() const { return m_botCount; }
 
     void LogoutAllBots();
     void RemoveAllBotsFromGroup();
@@ -68,7 +71,6 @@ public:
     uint32 m_confDisableBotsInRealm;
     uint32 m_confMaxNumBots;
     bool m_confDisableBots;
-    bool m_confSharedBots;
     bool m_confDebugWhisper;
     float m_confFollowDistance[2];
     bool m_confCollectCombat;
@@ -77,7 +79,8 @@ public:
     bool m_confCollectLoot;
     bool m_confCollectSkin;
     bool m_confCollectObjects;
-    int m_botCount;
+    uint32 m_confCollectDistance;
+    uint32 m_confCollectDistanceMax;
 
 private:
     Player* const m_master;

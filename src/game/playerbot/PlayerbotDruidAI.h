@@ -1,7 +1,7 @@
 /*
-* Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
-* Copyright (C) 2010 Blueboy
-* Copyright (C) 2011 MangosR2 
+* Copyright (C) 2005-2012 MaNGOS <http://getmangos.com/>
+* Copyright (C) 2012 Playerbot Team
+* Copyright (C) 2012 MangosR2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -128,6 +128,12 @@ public:
     bool BuffPlayer(Player *target);
 
 private:
+    // Combat Maneuver helper functions
+    void _DoNextPVECombatManeuverBear(Unit* pTarget);
+    void _DoNextPVECombatManeuverSpellDPS(Unit* pTarget);
+    void _DoNextPVECombatManeuverMeleeDPS(Unit* pTarget);
+    void _DoNextPVECombatManeuverHeal(Unit* pTarget);
+
     // Heals the target based off its hps
     bool HealTarget (Unit *target);
     // Callback method to reset shapeshift forms blocking buffs and heals
@@ -160,9 +166,10 @@ private:
            DEMORALIZING_ROAR,
            CHALLENGING_ROAR,
            GROWL,
-           ENRAGE;
+           ENRAGE,
+           FAERIE_FIRE_FERAL;
 
-    // druid attacks & debuffs
+    // druid caster DPS attacks & debuffs
     uint32 MOONFIRE,
            ROOTS,
            WRATH,
@@ -189,7 +196,9 @@ private:
            WILD_GROWTH,
            SWIFTMEND,
            TRANQUILITY,
-           REVIVE;
+           REVIVE,
+           REMOVE_CURSE,
+           ABOLISH_POISON;
 
     // first aid
     uint32 RECENTLY_BANDAGED;

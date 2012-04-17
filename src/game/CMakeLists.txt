@@ -120,3 +120,5 @@ if(PCH)
     endif()
   endif()
 endif()
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/playerbot/playerbot.conf.dist.in DESTINATION ${CONF_DIR} RENAME playerbot.conf.dist)

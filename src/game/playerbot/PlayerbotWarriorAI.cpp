@@ -1,7 +1,7 @@
 /*
-* Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
-* Copyright (C) 2010 Blueboy
-* Copyright (C) 2011 MangosR2 
+* Copyright (C) 2005-2012 MaNGOS <http://getmangos.com/>
+* Copyright (C) 2012 Playerbot Team
+* Copyright (C) 2012 MangosR2
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -164,6 +164,7 @@ void PlayerbotWarriorAI::DoNextCombatManeuver(Unit *pTarget)
 
     Player *m_bot = GetPlayerBot();
     Unit* pVictim = pTarget->getVictim();
+    float fTargetDist = m_bot->GetCombatDistance(pTarget);
     PlayerbotAI::CombatOrderType co = ai->GetCombatOrder();
 
     // decide what stance to use
@@ -210,6 +211,7 @@ void PlayerbotWarriorAI::DoNextCombatManeuver(Unit *pTarget)
             }
         }
     }
+
     std::ostringstream out;
     switch (SpellSequence)
     {
