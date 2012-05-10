@@ -245,7 +245,7 @@ inline bool IsSpellRemoveAllMovementAndControlLossEffects(SpellEntry const* spel
         spellProto->EffectMiscValue[EFFECT_INDEX_0] == 1 &&
         spellProto->EffectApplyAuraName[EFFECT_INDEX_1] == 0 &&
         spellProto->EffectApplyAuraName[EFFECT_INDEX_2] == 0 &&
-        (spellProto->AttributesEx & SPELL_ATTR_EX_DISPEL_AURAS_ON_IMMUNITY)/* && -- all above selected spells have SPELL_ATTR_EX5_* mask
+        spellProto->HasAttribute(SPELL_ATTR_EX_DISPEL_AURAS_ON_IMMUNITY)/* && -- all above selected spells have SPELL_ATTR_EX5_* mask
         ((spellProto->AttributesEx5 &
             (SPELL_ATTR_EX5_USABLE_WHILE_CONFUSED|SPELL_ATTR_EX5_USABLE_WHILE_FEARED|SPELL_ATTR_EX5_USABLE_WHILE_STUNNED)) ==
             (SPELL_ATTR_EX5_USABLE_WHILE_CONFUSED|SPELL_ATTR_EX5_USABLE_WHILE_FEARED|SPELL_ATTR_EX5_USABLE_WHILE_STUNNED))*/;
@@ -253,8 +253,7 @@ inline bool IsSpellRemoveAllMovementAndControlLossEffects(SpellEntry const* spel
 
 inline bool IsDeathOnlySpell(SpellEntry const *spellInfo)
 {
-    return spellInfo->AttributesEx3 & SPELL_ATTR_EX3_CAST_ON_DEAD
-        || spellInfo->Id == 2584;
+    return spellInfo->HasAttribute(SPELL_ATTR_EX3_CAST_ON_DEAD) || spellInfo->Id == 2584;
 }
 
 bool IsEffectCauseDamage(SpellEntry const* spellInfo, SpellEffectIndex effecIdx);
@@ -280,11 +279,11 @@ uint32 GetProcFlag(SpellEntry const* spellInfo);
 
 inline bool IsDeathPersistentSpell(SpellEntry const *spellInfo)
 {
-    return spellInfo->AttributesEx3 & SPELL_ATTR_EX3_DEATH_PERSISTENT;
+    return spellInfo->HasAttribute(SPELL_ATTR_EX3_DEATH_PERSISTENT);
 }
 inline bool IsNonCombatSpell(SpellEntry const *spellInfo)
 {
-    return (spellInfo->Attributes & SPELL_ATTR_CANT_USED_IN_COMBAT) != 0;
+    return spellInfo->HasAttribute(SPELL_ATTR_CANT_USED_IN_COMBAT);
 }
 
 bool IsPositiveSpell(uint32 spellId);
@@ -468,6 +467,21 @@ inline bool HasAuraWithTriggerEffect(SpellEntry const *spellInfo)
     return false;
 }
 
+inline bool HasInterruptSpellEffect(SpellEntry const *spellInfo)
+{
+    for (int32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        switch(spellInfo->Effect[i])
+        {
+            case SPELL_EFFECT_INTERRUPT_CAST:
+                return true;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
 inline bool IsDispelSpell(SpellEntry const *spellInfo)
 {
     return IsSpellHaveEffect(spellInfo, SPELL_EFFECT_DISPEL);
@@ -475,12 +489,12 @@ inline bool IsDispelSpell(SpellEntry const *spellInfo)
 
 inline bool isSpellBreakStealth(SpellEntry const* spellInfo)
 {
-    return !(spellInfo->AttributesEx & SPELL_ATTR_EX_NOT_BREAK_STEALTH);
+    return !spellInfo->HasAttribute(SPELL_ATTR_EX_NOT_BREAK_STEALTH);
 }
 
 inline bool IsAutoRepeatRangedSpell(SpellEntry const* spellInfo)
 {
-    return (spellInfo->Attributes & SPELL_ATTR_RANGED) && (spellInfo->AttributesEx2 & SPELL_ATTR_EX2_AUTOREPEAT_FLAG);
+    return spellInfo->HasAttribute(SPELL_ATTR_RANGED) && spellInfo->HasAttribute(SPELL_ATTR_EX2_AUTOREPEAT_FLAG);
 }
 
 inline bool IsSpellRequiresRangedAP(SpellEntry const* spellInfo)
@@ -492,22 +506,22 @@ SpellCastResult GetErrorAtShapeshiftedCast (SpellEntry const *spellInfo, uint32 
 
 inline bool IsChanneledSpell(SpellEntry const* spellInfo)
 {
-    return (spellInfo->AttributesEx & (SPELL_ATTR_EX_CHANNELED_1 | SPELL_ATTR_EX_CHANNELED_2));
+    return spellInfo->HasAttribute(SPELL_ATTR_EX_CHANNELED_1) || spellInfo->HasAttribute(SPELL_ATTR_EX_CHANNELED_2);
 }
 
 inline bool IsNeedCastSpellAtFormApply(SpellEntry const* spellInfo, ShapeshiftForm form)
 {
-    if (!(spellInfo->Attributes & (SPELL_ATTR_PASSIVE | SPELL_ATTR_HIDDEN_CLIENTSIDE)) || !form)
+    if ((!spellInfo->HasAttribute(SPELL_ATTR_PASSIVE) && !spellInfo->HasAttribute(SPELL_ATTR_HIDDEN_CLIENTSIDE)) || !form)
         return false;
 
     // passive spells with SPELL_ATTR_EX2_NOT_NEED_SHAPESHIFT are already active without shapeshift, do no recast!
-    return (spellInfo->Stances & (1<<(form-1)) && !(spellInfo->AttributesEx2 & SPELL_ATTR_EX2_NOT_NEED_SHAPESHIFT));
+    return (spellInfo->Stances & (1<<(form-1)) && !spellInfo->HasAttribute(SPELL_ATTR_EX2_NOT_NEED_SHAPESHIFT));
 }
 
 
 inline bool NeedsComboPoints(SpellEntry const* spellInfo)
 {
-    return (spellInfo->AttributesEx & (SPELL_ATTR_EX_REQ_TARGET_COMBO_POINTS | SPELL_ATTR_EX_REQ_COMBO_POINTS));
+    return spellInfo->HasAttribute(SPELL_ATTR_EX_REQ_TARGET_COMBO_POINTS) || spellInfo->HasAttribute(SPELL_ATTR_EX_REQ_COMBO_POINTS);
 }
 
 inline SpellSchoolMask GetSpellSchoolMask(SpellEntry const* spellInfo)
@@ -566,6 +580,16 @@ inline bool IsSpellReduceThreat(SpellEntry const* spellInfo)
 {
     for (int32 i = 0; i < MAX_EFFECT_INDEX; ++i)
     {
+        if (spellInfo->Effect[i] == SPELL_EFFECT_THREAT)
+        {
+            if (spellInfo->CalculateSimpleValue(SpellEffectIndex(i)) < 0)
+                return true;
+            else if (spellInfo->EffectRealPointsPerLevel[i] < 0.0f)
+                return true;
+            else
+                return false;
+        }
+
         if (spellInfo->Effect[i] != SPELL_EFFECT_APPLY_AURA)
             continue;
 
@@ -584,12 +608,57 @@ inline bool IsSpellReduceThreat(SpellEntry const* spellInfo)
     return false;
 }
 
+inline bool IsSpellIncreaseThreat(SpellEntry const* spellInfo)
+{
+    for (int32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        switch(spellInfo->Effect[i])
+        {
+            case SPELL_EFFECT_THREAT:
+            case SPELL_EFFECT_THREAT_ALL:
+                return true;
+            default:
+                break;
+        }
+
+        if (spellInfo->Effect[i] != SPELL_EFFECT_APPLY_AURA)
+            continue;
+
+        switch(spellInfo->EffectApplyAuraName[i])
+        {
+            case SPELL_AURA_MOD_TOTAL_THREAT:
+            case SPELL_AURA_MOD_THREAT:
+            case SPELL_AURA_MOD_CRITICAL_THREAT:
+                if (spellInfo->CalculateSimpleValue(SpellEffectIndex(i)) > 0)
+                    return true;
+                break;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
 inline bool IsSpellAllowDeadTarget(SpellEntry const* spellInfo)
 {
-    return spellInfo ? spellInfo->AttributesEx2 & SPELL_ATTR2_ALLOW_DEAD_TARGET : false;
+    return spellInfo ? spellInfo->HasAttribute(SPELL_ATTR_EX2_ALLOW_DEAD_TARGET) : false;
 }
 
 bool IsSpellAffectedBySpellMods(SpellEntry const* spellInfo);
+
+enum SpellPreferredTargetType
+{
+    SPELL_PREFERRED_TARGET_VICTIM,
+    SPELL_PREFERRED_TARGET_SELF,
+    SPELL_PREFERRED_TARGET_ENEMY,
+    SPELL_PREFERRED_TARGET_FRIEND,
+    SPELL_PREFERRED_TARGET_AREA,
+    SPELL_PREFERRED_TARGET_OWNER,
+    SPELL_PREFERRED_TARGET_RANDOM,
+    SPELL_PREFERRED_TARGET_MAX,
+};
+
+SpellPreferredTargetType GetPreferredTargetForSpell(SpellEntry const* spellInfo);
 
 // Diminishing Returns interaction with spells
 DiminishingGroup GetDiminishingReturnsGroupForSpell(SpellEntry const* spellproto, bool triggered);

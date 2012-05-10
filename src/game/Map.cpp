@@ -1348,9 +1348,9 @@ bool DungeonMap::Add(Player *player)
 
                 if (groupBind)
                     DEBUG_LOG("DungeonMap::Add: the group (Id: %d) is bound to instance %d,%d,%d,%d,%d,%d.",
-                    pGroup->GetId(),
-                    groupBind->state->GetMapId(), groupBind->state->GetInstanceId(), groupBind->state->GetDifficulty(),
-                    groupBind->state->GetPlayerCount(), groupBind->state->GetGroupCount(), groupBind->state->CanReset());
+                        pGroup->GetId(),
+                        groupBind->state->GetMapId(), groupBind->state->GetInstanceId(), groupBind->state->GetDifficulty(),
+                        groupBind->state->GetPlayerCount(), groupBind->state->GetGroupCount(), groupBind->state->CanReset());
 
                 // no reason crash if we can fix state
                 player->UnbindInstance(GetId(), GetDifficulty());
@@ -1649,12 +1649,12 @@ void BattleGroundMap::UnloadAll(bool pForce)
 }
 
 /// Put scripts in the execution queue
-void Map::ScriptsStart(ScriptMapMapName const& scripts, uint32 id, Object* source, Object* target)
+bool Map::ScriptsStart(ScriptMapMapName const& scripts, uint32 id, Object* source, Object* target)
 {
     ///- Find the script map
     ScriptMapMap::const_iterator s = scripts.second.find(id);
     if (s == scripts.second.end())
-        return;
+        return false;
 
     // prepare static data
     ObjectGuid sourceGuid = source->GetObjectGuid();
@@ -1677,6 +1677,8 @@ void Map::ScriptsStart(ScriptMapMapName const& scripts, uint32 id, Object* sourc
     ///- If one of the effects should be immediate, launch the script execution
     if (immedScript)
         ScriptsProcess();
+
+    return true;
 }
 
 void Map::ScriptCommandStart(ScriptInfo const& script, uint32 delay, Object* source, Object* target)

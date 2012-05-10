@@ -272,8 +272,6 @@ class MANGOS_DLL_SPEC WorldSession
         void SendGMTicketGetTicket(uint32 status, GMTicket *ticket = NULL);
         void SendGMResponse(GMTicket *ticket);
 
-        void SendAttackStop(Unit const* enemy);
-
         void SendBattlegGroundList(ObjectGuid guid, BattleGroundTypeId bgTypeId);
 
         void SendTradeStatus(TradeStatus status);
@@ -796,7 +794,6 @@ class MANGOS_DLL_SPEC WorldSession
         void HandleGuildBankDepositMoney(WorldPacket& recv_data);
         void HandleGuildBankWithdrawMoney(WorldPacket& recv_data);
         void HandleGuildBankSwapItems(WorldPacket& recv_data);
-
         void HandleGuildBankUpdateTab(WorldPacket& recv_data);
         void HandleGuildBankBuyTab(WorldPacket& recv_data);
         void HandleQueryGuildBankTabText(WorldPacket& recv_data);

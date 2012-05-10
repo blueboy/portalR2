@@ -34,6 +34,7 @@ ScriptMapMapName sQuestEndScripts;
 ScriptMapMapName sQuestStartScripts;
 ScriptMapMapName sSpellScripts;
 ScriptMapMapName sGameObjectScripts;
+ScriptMapMapName sGameObjectTemplateScripts;
 ScriptMapMapName sEventScripts;
 ScriptMapMapName sGossipScripts;
 ScriptMapMapName sCreatureMovementScripts;
@@ -84,6 +85,43 @@ ScriptMgr::~ScriptMgr()
 // /////////////////////////////////////////////////////////
 //              DB SCRIPTS (loaders of static data)
 // /////////////////////////////////////////////////////////
+// returns priority (0 == cannot start script)
+uint8 GetSpellStartDBScriptPriority(SpellEntry const* spellinfo, SpellEffectIndex effIdx)
+{
+    if (spellinfo->Effect[effIdx] == SPELL_EFFECT_SCRIPT_EFFECT)
+        return 10;
+
+    if (spellinfo->Effect[effIdx] == SPELL_EFFECT_DUMMY)
+        return 9;
+
+    // NonExisting triggered spells can also start DB-Spell-Scripts
+    if (spellinfo->Effect[effIdx] == SPELL_EFFECT_TRIGGER_SPELL && !sSpellStore.LookupEntry(spellinfo->EffectTriggerSpell[effIdx]))
+        return 5;
+
+    // Can not start script
+    return 0;
+}
+
+// Priorize: SCRIPT_EFFECT before DUMMY before Non-Existing triggered spell, for same priority the first effect with the priority triggers
+bool ScriptMgr::CanSpellEffectStartDBScript(SpellEntry const* spellinfo, SpellEffectIndex effIdx)
+{
+    uint8 priority = GetSpellStartDBScriptPriority(spellinfo, effIdx);
+    if (!priority)
+        return false;
+
+    for (int i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        uint8 currentPriority = GetSpellStartDBScriptPriority(spellinfo, SpellEffectIndex(i));
+        if (currentPriority < priority)                     // lower priority, continue checking
+            continue;
+        if (currentPriority > priority)                     // take other index with higher priority
+            return false;
+        if (i < effIdx)                                     // same priority at lower index
+            return false;
+    }
+
+    return true;
+}
 
 void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
 {
@@ -536,6 +574,38 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
             {
                 break;
             }
+            case SCRIPT_COMMAND_SEND_TAXI_PATH:
+            {
+                if (!sTaxiPathStore.LookupEntry(tmp.sendTaxiPath.taxiPathId))
+                {
+                    sLog.outErrorDb("Table `%s` has datalong = %u in SCRIPT_COMMAND_SEND_TAXI_PATH for script id %u, but this taxi path does not exist.", tablename, tmp.sendTaxiPath.taxiPathId, tmp.id);
+                    continue;
+                }
+                // Check if this taxi path can be triggered with a spell
+                if (!sLog.HasLogFilter(LOG_FILTER_DB_STRICTED_CHECK))
+                {
+                    uint32 taxiSpell = 0;
+                    for (uint32 i = 1; i < sSpellStore.GetNumRows() && taxiSpell == 0; ++i)
+                    {
+                        if (SpellEntry const* spell = sSpellStore.LookupEntry(i))
+                            for (int j = 0; j < MAX_EFFECT_INDEX; ++j)
+                            {
+                                if (spell->Effect[j] == SPELL_EFFECT_SEND_TAXI && spell->EffectMiscValue[j] == tmp.sendTaxiPath.taxiPathId)
+                                {
+                                    taxiSpell = i;
+                                    break;
+                                }
+                            }
+                    }
+
+                    if (taxiSpell)
+                    {
+                        sLog.outErrorDb("Table `%s` has datalong = %u in SCRIPT_COMMAND_SEND_TAXI_PATH for script id %u, but this taxi path can be triggered by spell %u.", tablename, tmp.sendTaxiPath.taxiPathId, tmp.id, taxiSpell);
+                        continue;
+                    }
+                }
+                break;
+            }
         }
 
         if (scripts.second.find(tmp.id) == scripts.second.end())
@@ -563,6 +633,18 @@ void ScriptMgr::LoadGameObjectScripts()
     {
         if (!sObjectMgr.GetGOData(itr->first))
             sLog.outErrorDb("Table `gameobject_scripts` has not existing gameobject (GUID: %u) as script id", itr->first);
+    }
+}
+
+void ScriptMgr::LoadGameObjectTemplateScripts()
+{
+    LoadScripts(sGameObjectTemplateScripts, "gameobject_template_scripts");
+
+    // check ids
+    for (ScriptMapMap::const_iterator itr = sGameObjectTemplateScripts.second.begin(); itr != sGameObjectTemplateScripts.second.end(); ++itr)
+    {
+        if (!sObjectMgr.GetGameObjectInfo(itr->first))
+            sLog.outErrorDb("Table `gameobject_template_scripts` has not existing gameobject (Entry: %u) as script id", itr->first);
     }
 }
 
@@ -595,25 +677,20 @@ void ScriptMgr::LoadSpellScripts()
     LoadScripts(sSpellScripts, "spell_scripts");
 
     // check ids
-    for(ScriptMapMap::const_iterator itr = sSpellScripts.second.begin(); itr != sSpellScripts.second.end(); ++itr)
+    for (ScriptMapMap::const_iterator itr = sSpellScripts.second.begin(); itr != sSpellScripts.second.end(); ++itr)
     {
         SpellEntry const* spellInfo = sSpellStore.LookupEntry(itr->first);
-
         if (!spellInfo)
         {
             sLog.outErrorDb("Table `spell_scripts` has not existing spell (Id: %u) as script id", itr->first);
             continue;
         }
 
-        //check for correct spellEffect
+        // check for correct spellEffect
         bool found = false;
-        for(int i = 0; i < MAX_EFFECT_INDEX; ++i)
+        for (int i = 0; i < MAX_EFFECT_INDEX; ++i)
         {
-            // skip empty effects
-            if (!spellInfo->Effect[i])
-                continue;
-
-            if (spellInfo->Effect[i] == SPELL_EFFECT_SCRIPT_EFFECT)
+            if (GetSpellStartDBScriptPriority(spellInfo, SpellEffectIndex(i)))
             {
                 found =  true;
                 break;
@@ -621,7 +698,7 @@ void ScriptMgr::LoadSpellScripts()
         }
 
         if (!found)
-            sLog.outErrorDb("Table `spell_scripts` has unsupported spell (Id: %u) without SPELL_EFFECT_SCRIPT_EFFECT (%u) spell effect", itr->first, SPELL_EFFECT_SCRIPT_EFFECT);
+            sLog.outErrorDb("Table `spell_scripts` has unsupported spell (Id: %u)", itr->first);
     }
 }
 
@@ -722,6 +799,7 @@ void ScriptMgr::LoadDbScriptStrings()
     CheckScriptTexts(sQuestStartScripts, ids);
     CheckScriptTexts(sSpellScripts, ids);
     CheckScriptTexts(sGameObjectScripts, ids);
+    CheckScriptTexts(sGameObjectTemplateScripts, ids);
     CheckScriptTexts(sEventScripts, ids);
     CheckScriptTexts(sGossipScripts, ids);
     CheckScriptTexts(sCreatureMovementScripts, ids);
@@ -776,7 +854,7 @@ bool ScriptAction::GetScriptCommandObject(const ObjectGuid guid, bool includeIte
             resultObject = m_map->GetPet(guid);
             break;
         case HIGHGUID_PLAYER:
-            resultObject = ObjectAccessor::FindPlayer(guid, false);
+            resultObject = m_map->GetPlayer(guid);
             break;
         case HIGHGUID_GAMEOBJECT:
             resultObject = m_map->GetGameObject(guid);
@@ -789,7 +867,7 @@ bool ScriptAction::GetScriptCommandObject(const ObjectGuid guid, bool includeIte
         {
             if (includeItem)
             {
-                if (Player* player = ObjectAccessor::FindPlayer(m_ownerGuid, false))
+                if (Player* player = m_map->GetPlayer(m_ownerGuid))
                     resultObject = player->GetItemByGuid(guid);
                 break;
             }
@@ -1203,7 +1281,7 @@ void ScriptAction::HandleScriptStep()
             float z = m_script->z;
             float o = m_script->o;
 
-            Creature* pCreature = pSource->SummonCreature(m_script->summonCreature.creatureEntry, x, y, z, o, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, m_script->summonCreature.despawnDelay, (m_script->data_flags & SCRIPT_FLAG_COMMAND_ADDITIONAL) ? true: false);
+            Creature* pCreature = pSource->SummonCreature(m_script->summonCreature.creatureEntry, x, y, z, o, m_script->summonCreature.despawnDelay ? TEMPSUMMON_TIMED_OR_DEAD_DESPAWN : TEMPSUMMON_DEAD_DESPAWN, m_script->summonCreature.despawnDelay, (m_script->data_flags & SCRIPT_FLAG_COMMAND_ADDITIONAL) ? true: false);
             if (!pCreature)
             {
                 sLog.outError(" DB-SCRIPTS: Process table `%s` id %u, command %u failed for creature (entry: %u).", m_table, m_script->id, m_script->command, m_script->summonCreature.creatureEntry);
@@ -1544,6 +1622,16 @@ void ScriptAction::HandleScriptStep()
                     pSource->SetFlag(UNIT_NPC_FLAGS, m_script->npcFlag.flag);
             }
 
+            break;
+        }
+        case SCRIPT_COMMAND_SEND_TAXI_PATH:
+        {
+            // only Player
+            Player* pPlayer = GetPlayerTargetOrSourceAndLog(pSource, pTarget);
+            if (!pPlayer)
+                break;
+
+            pPlayer->ActivateTaxiPathTo(m_script->sendTaxiPath.taxiPathId);
             break;
         }
         default:

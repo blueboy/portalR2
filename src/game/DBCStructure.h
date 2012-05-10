@@ -24,6 +24,7 @@
 #include "Path.h"
 #include "Platform/Define.h"
 #include "SpellClassMask.h"
+#include "SharedDefines.h"
 
 #include <map>
 #include <set>
@@ -1667,71 +1668,71 @@ struct ClassFamilyMask
     template <CFM_ARGS_1>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_1>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_1>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_1>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_1>::value);
     }
 
     template <CFM_ARGS_2>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_2>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_2>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_2>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_2>::value);
     }
 
     template <CFM_ARGS_3>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_3>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_3>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_3>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_3>::value);
     }
 
     template <CFM_ARGS_4>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_4>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_4>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_4>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_4>::value);
     }
 
     template <CFM_ARGS_5>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_5>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_5>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_5>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_5>::value);
     }
 
     template <CFM_ARGS_6>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_6>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_6>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_6>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_6>::value);
     }
 
     template <CFM_ARGS_7>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_7>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_7>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_7>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_7>::value);
     }
 
     template <CFM_ARGS_8>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_8>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_8>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_8>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_8>::value);
     }
 
     template <CFM_ARGS_9>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_9>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_9>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_9>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_9>::value);
     }
 
     template <CFM_ARGS_10>
     bool test() const
     {
-        return Flags  & BitMask<uint64, true,  CFM_VALUES_10>::value ||
-               Flags2 & BitMask<uint32, false, CFM_VALUES_10>::value;
+        return (Flags  & BitMask<uint64, true,  CFM_VALUES_10>::value) ||
+               (Flags2 & BitMask<uint32, false, CFM_VALUES_10>::value);
     }
 
     // named constructors (compile-time)
@@ -2111,6 +2112,15 @@ struct SpellEntry
         return SpellFamily(SpellFamilyName) == family && SpellFamilyFlags.test<CFM_VALUES_10>();
     }
 
+    inline bool HasAttribute(SpellAttributes attribute) const { return Attributes & attribute; }
+    inline bool HasAttribute(SpellAttributesEx attribute) const { return AttributesEx & attribute; }
+    inline bool HasAttribute(SpellAttributesEx2 attribute) const { return AttributesEx2 & attribute; }
+    inline bool HasAttribute(SpellAttributesEx3 attribute) const { return AttributesEx3 & attribute; }
+    inline bool HasAttribute(SpellAttributesEx4 attribute) const { return AttributesEx4 & attribute; }
+    inline bool HasAttribute(SpellAttributesEx5 attribute) const { return AttributesEx5 & attribute; }
+    inline bool HasAttribute(SpellAttributesEx6 attribute) const { return AttributesEx6 & attribute; }
+    inline bool HasAttribute(SpellAttributesEx7 attribute) const { return AttributesEx7 & attribute; }
+
     private:
         // prevent creating custom entries (copy data from original in fact)
         SpellEntry(SpellEntry const&);                      // DON'T must have implementation
@@ -2424,7 +2434,7 @@ struct VehicleSeatEntry
                                                             // 55       m_cameraEnteringZoom"
                                                             // 56       m_cameraSeatZoomMin
                                                             // 57       m_cameraSeatZoomMax
-    bool IsUsable() const { return (m_flags & SEAT_FLAG_USABLE || m_flags & SEAT_FLAG_CAN_CONTROL); }
+    bool IsUsable() const { return ((m_flags & SEAT_FLAG_USABLE) || (m_flags & SEAT_FLAG_CAN_CONTROL)); }
 };
 
 struct WMOAreaTableEntry

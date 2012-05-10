@@ -379,6 +379,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_VMSS_TRYSKIPFIRST,
     CONFIG_BOOL_MMAP_ENABLED,
     CONFIG_BOOL_RESET_DUEL_AREA_ENABLED,
+    CONFIG_BOOL_PET_ADVANCED_AI,
     CONFIG_BOOL_VALUE_COUNT
 };
 
@@ -686,7 +687,6 @@ class World
         SessionMap m_sessions;
         uint32 m_maxActiveSessionCount;
         uint32 m_maxQueuedSessionCount;
-
 
         uint32 m_configUint32Values[CONFIG_UINT32_VALUE_COUNT];
         int32 m_configInt32Values[CONFIG_INT32_VALUE_COUNT];
