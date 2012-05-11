@@ -136,8 +136,8 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                return;
             }
 
-                CharacterDatabase.PExecute("INSERT INTO petition_sign (ownerguid,petitionguid, playerguid, player_account) VALUES ('%u', '%u', '%u','%u')",
-                GetMaster()->GetGUIDLow(), petitionLowGuid, player->GetGUIDLow(), GetMaster()->GetSession()->GetAccountId());
+            CharacterDatabase.PExecute("INSERT INTO petition_sign (ownerguid,petitionguid, playerguid, player_account) VALUES ('%u', '%u', '%u','%u')",
+            GetMaster()->GetGUIDLow(), petitionLowGuid, player->GetGUIDLow(), GetMaster()->GetSession()->GetAccountId());
 
             p.Initialize(SMSG_PETITION_SIGN_RESULTS, (8+8+4));
             p << ObjectGuid(petitionGuid);
@@ -216,7 +216,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
 
                 }
                 while (result->NextRow());
-		delete result;
+                delete result;
             }
             return;
         }
