@@ -30,6 +30,7 @@
 #include "../GossipDef.h"
 #include "../Language.h"
 #include "../WaypointMovementGenerator.h"
+#include "../Guild.h"
 
 class LoginQueryHolder;
 class CharacterHandler;
@@ -87,6 +88,185 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
 {
     switch (packet.GetOpcode())
     {
+
+        case CMSG_TOGGLE_PVP:
+        {
+            WorldPacket p(packet);
+
+            for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+            {
+                Player* const bot = it->second;
+                if (!bot)
+                    continue;
+
+                p.rpos(0);         // reset reader
+                bot->GetSession()->HandleTogglePvP(p);
+                if (bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_IN_PVP))
+                    bot->GetPlayerbotAI()->SetScenarioType(PlayerbotAI::SCENARIO_PVPEASY);
+                else
+                    bot->GetPlayerbotAI()->SetScenarioType(PlayerbotAI::SCENARIO_PVEEASY);
+            }
+            return;
+        }
+
+        case CMSG_OFFER_PETITION:
+        {
+            WorldPacket p(packet);
+            p.rpos(0);    // reset reader
+            ObjectGuid petitionGuid;
+            ObjectGuid playerGuid;
+            uint32 junk;
+
+            p >> junk;                                      // this is not petition type!
+            p >> petitionGuid;                              // petition guid
+            p >> playerGuid;                                // player guid
+
+            Player* player = ObjectAccessor::FindPlayer(playerGuid);
+            if (!player)
+                return;
+
+            uint32 petitionLowGuid = petitionGuid.GetCounter();
+
+            QueryResult *result = CharacterDatabase.PQuery("SELECT * FROM petition_sign WHERE playerguid = '%u' AND petitionguid = '%u'", player->GetGUIDLow(), petitionLowGuid);
+
+            if(result)
+            {
+               ChatHandler(m_master).PSendSysMessage("%s has already signed the petition",player->GetName());
+               delete result;
+               return;
+            }
+
+                CharacterDatabase.PExecute("INSERT INTO petition_sign (ownerguid,petitionguid, playerguid, player_account) VALUES ('%u', '%u', '%u','%u')",
+                GetMaster()->GetGUIDLow(), petitionLowGuid, player->GetGUIDLow(), GetMaster()->GetSession()->GetAccountId());
+
+            p.Initialize(SMSG_PETITION_SIGN_RESULTS, (8+8+4));
+            p << ObjectGuid(petitionGuid);
+            p << ObjectGuid(playerGuid);
+            p << uint32(PETITION_SIGN_OK);
+
+            // close at signer side
+            GetMaster()->GetSession()->SendPacket(&p);
+
+            return;
+        }
+
+        case MSG_RAID_READY_CHECK:
+        {
+            WorldPacket p(packet);
+
+            for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+            {
+                Player* const bot = it->second;
+                if (!bot)
+                    return;
+
+                Group* group = bot->GetGroup();
+                if (!group)
+                    return;
+
+                // DEBUG_LOG("MSG_RAID_READY_CHECK group(%u)",GetMaster()->GetGUIDLow());
+
+                Player* const leader = sObjectMgr.GetPlayer(group->GetLeaderGuid());
+                if (!leader)
+                    return;
+
+                if (group->isRaidGroup() && bot->GetPlayerbotAI()->canObeyCommandFrom(*leader))
+                {
+                    p.Initialize(MSG_RAID_READY_CHECK_CONFIRM, 9);
+                    p << bot->GetObjectGuid();
+                    p << uint8(146);
+                    group->BroadcastReadyCheck(&p);
+                }
+            }
+            return;
+        }
+
+        case CMSG_BATTLEFIELD_PORT:
+        {
+            WorldPacket p(packet);
+            p.rpos(0);    // reset reader
+            p.hexlike();
+
+            uint8 type;
+            uint8 unk2;
+            uint32 bgTypeId_;
+            uint16 unk;
+            uint8 action;
+
+            p >> type >> unk2 >> bgTypeId_ >> unk >> action;
+
+            QueryResult *result = CharacterDatabase.PQuery("SELECT arena_team_member.guid FROM arena_team_member JOIN arena_team ON arena_team_member.arenateamid = arena_team.arenateamid WHERE captainguid='%u' AND type='%u'", GetMaster()->GetObjectGuid().GetCounter(), type);
+            if (result)
+            {
+                do
+                {
+                    Field *fields = result->Fetch();
+                    uint32 guid = fields[0].GetUInt32();
+
+                    for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+                    {
+                        Player* const bot = it->second;
+                        if (!bot)
+                            continue;
+
+                       p.rpos(0);    // reset reader
+                       if (bot->GetGUIDLow() == guid)
+                           bot->GetSession()->HandleBattleFieldPortOpcode(p);
+                    }
+
+                }
+                while (result->NextRow());
+		delete result;
+            }
+            return;
+        }
+
+        case CMSG_LFG_JOIN:
+        {
+            for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+            {
+                Player* const bot = it->second;
+                if (!bot)
+                    continue;
+
+                Group* group = bot->GetGroup();
+                if (group)
+                {
+                    bool isChanged = sLFGMgr.RoleChanged(bot, bot->GetPlayerbotAI()->GetRole());
+                    // DEBUG_LOG("CMSG_LFG_SET_ROLES: Group %u, Player %u, Roles: %u %s", group->GetObjectGuid().GetCounter(), bot->GetObjectGuid().GetCounter(), bot->GetPlayerbotAI()->GetRole(), isChanged ? "changed" : "not changed");
+                    sLFGMgr.UpdateRoleCheck(group);
+                }
+                else
+                {
+                    bot->GetLFGState()->SetRoles(bot->GetPlayerbotAI()->GetRole());
+                    // DEBUG_LOG("CMSG_LFG_SET_ROLES (not in group) Player %u roles %u", bot->GetObjectGuid().GetCounter(), bot->GetPlayerbotAI()->GetRole());
+                }
+            }
+            return;
+        }
+
+        case CMSG_LFG_PROPOSAL_RESPONSE:
+        {
+            WorldPacket p(packet);
+            p.rpos(0);    // reset reader
+
+            uint32 ID;                                              // Internal proposal ID
+            bool   accept;                                          // Accept to join?
+            p >> ID;
+            p >> accept;
+
+            for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
+            {
+                Player* const bot = it->second;
+                if (!bot)
+                    continue;
+
+                // DEBUG_LOG("CMSG_LFG_PROPOSAL_RESULT %u proposal: %u accept: %u", bot->GetObjectGuid().GetCounter(), ID, accept ? 1 : 0);
+                sLFGMgr.UpdateProposal(ID, bot->GetObjectGuid(), accept);
+
+            }
+            return;
+        }
 
         case CMSG_ACTIVATETAXI:
         {

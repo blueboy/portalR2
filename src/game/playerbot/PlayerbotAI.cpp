@@ -768,6 +768,20 @@ void PlayerbotAI::ReloadAI()
     SKINNING            = initSpell(SKINNING_1);
 }
 
+uint8 PlayerbotAI::GetRole()
+{
+    if (!m_combatOrder)
+        return 0;
+    else if (m_combatOrder & ORDERS_TANK)
+        return (1 << ROLE_TANK);
+    else if (m_combatOrder & ORDERS_HEAL)
+        return (1 << ROLE_HEALER);
+    else if (m_combatOrder & ORDERS_ASSIST)
+        return (1 << ROLE_DAMAGE);
+
+    return 0;
+}
+
 void PlayerbotAI::SendOrders(Player& /*player*/)
 {
     std::ostringstream out;
@@ -3411,7 +3425,7 @@ void PlayerbotAI::UpdateAI(const uint32 /*p_time*/)
     // default updates occur every two seconds
     m_ignoreAIUpdatesUntilTime = time(NULL) + 2;
 
-    if (!m_bot->isAlive())
+    if (!m_bot->isAlive() && !m_bot->InArena())
     {
         if (m_botState != BOTSTATE_DEAD && m_botState != BOTSTATE_DEADRELEASED)
         {
@@ -6034,6 +6048,9 @@ bool PlayerbotAI::TradeCopper(uint32 copper)
 
 bool PlayerbotAI::DoTeleport(WorldObject &obj)
 {
+    if (GetMaster()->InArena())
+        return false;
+
     m_ignoreAIUpdatesUntilTime = time(NULL) + 6;
     PlayerbotChatHandler ch(GetMaster());
     if (!ch.teleport(*m_bot))
@@ -6880,7 +6897,8 @@ void PlayerbotAI::HandleCommand(const std::string& text, Player& fromPlayer)
         _HandleCommandStay(input, fromPlayer);
     else if (ExtractCommand("attack", input))
         _HandleCommandAttack(input, fromPlayer);
-
+    else if (ExtractCommand("recall", input))
+        _HandleCommandRecall(input, fromPlayer);
     else if (ExtractCommand("cast", input, true)) // true -> "cast" OR "c"
         _HandleCommandCast(input, fromPlayer);
 
@@ -7123,6 +7141,32 @@ void PlayerbotAI::_HandleCommandAttack(std::string &text, Player &fromPlayer)
     {
         SendWhisper("No target is selected.", fromPlayer);
         m_bot->HandleEmoteCommand(EMOTE_ONESHOT_TALK);
+    }
+}
+
+void PlayerbotAI::_HandleCommandRecall(std::string &text, Player &fromPlayer)
+{
+    ObjectGuid attackOnGuid = fromPlayer.GetSelectionGuid();
+    if (attackOnGuid)
+    {
+        if (Unit * thingToAttack = ObjectAccessor::GetUnit(*m_bot, attackOnGuid))
+        {
+            m_bot->SendMeleeAttackStop(thingToAttack);
+            Pet *pet = m_bot->GetPet();
+            if (pet)
+                pet->AttackStop();
+
+            m_bot->SetSelectionGuid(ObjectGuid());
+            m_targetChanged = false;
+            m_targetType = TARGET_NORMAL;
+            SetState(BOTSTATE_NORMAL);
+            MovementReset();
+            m_attackerInfo.clear();
+            UpdateAttackerInfo();
+            m_lootTargets.clear();
+            m_lootCurrent = ObjectGuid();
+            m_targetCombat = 0;
+        }
     }
 }
 
@@ -7692,13 +7736,13 @@ void PlayerbotAI::_HandleCommandTalent(std::string &text, Player &fromPlayer)
                     SetActiveTalentSpec(ts);
                     if (!ApplyActiveTalentSpec())
                         SendWhisper("The talent spec has been set active but could not be applied. It appears something has gone awry.", fromPlayer);
-                    //DEBUG_LOG ("[PlayerbotAI]: Could set TalentSpec but could not apply it - 'talent spec #': Class: %i; chosenSpec: %li", (long)m_bot->getClass(), chosenSpec);
+                    //DEBUG_LOG ("[PlayerbotAI]: Could set TalentSpec but could not apply it - 'talent spec #': Class: %li; chosenSpec: %u", (long)m_bot->getClass(), chosenSpec);
                     InspectUpdate();
                 }
                 else
                 {
                     SendWhisper("An error has occured. Please let a Game Master know. This error has been logged.", fromPlayer);
-                    DEBUG_LOG ("[PlayerbotAI]: Could not GetTalentSpec to set & apply - 'talent spec #': Class: %i; chosenSpec: %li", (long) m_bot->getClass(), chosenSpec);
+                    //DEBUG_LOG ("[PlayerbotAI]: Could not GetTalentSpec to set & apply - 'talent spec #': Class: %li; chosenSpec: %u", (long) m_bot->getClass(), chosenSpec);
                 }
             }
         }
@@ -9085,6 +9129,16 @@ void PlayerbotAI::_HandleCommandHelp(std::string &text, Player &fromPlayer)
     if (bMainHelp || ExtractCommand("attack", text))
     {
         ch.SendSysMessage(_HandleCommandHelpHelper("attack", "Attack the selected target. Which would, of course, require a valid target.", HL_TARGET).c_str());
+
+        if (!bMainHelp)
+        {
+            if (text != "") ch.SendSysMessage(sInvalidSubcommand.c_str());
+            return;
+        }
+    }
+    if (bMainHelp || ExtractCommand("recall", text))
+    {
+        ch.SendSysMessage(_HandleCommandHelpHelper("recall", "bot(s) stop attacking the selected target and return to master.").c_str());
 
         if (!bMainHelp)
         {

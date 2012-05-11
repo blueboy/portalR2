@@ -1653,6 +1653,9 @@ public:
 
     // Returns what kind of situation we are in so the ai can react accordingly
     ScenarioType GetScenarioType() { return m_ScenarioType; }
+    CombatStyle GetCombatStyle() { return m_combatStyle; }
+    void SetCombatStyle(CombatStyle cs) { m_combatStyle = cs; }
+    void SetScenarioType(ScenarioType st) { m_ScenarioType = st; }
 
     PlayerbotClassAI* GetClassAI() { return m_classAI; }
     PlayerbotMgr* GetManager() { return m_mgr; }
@@ -1836,6 +1839,7 @@ public:
     uint32 GetAttackerCount() { return m_attackerInfo.size(); };
     void SetCombatOrderByStr(std::string str, Unit *target = 0);
     void SetCombatOrder(CombatOrderType co, Unit *target = 0);
+    uint8 GetRole();
     CombatOrderType GetCombatOrder() { return this->m_combatOrder; }
     void SetMovementOrder(MovementOrderType mo, Unit *followTarget = 0);
     MovementOrderType GetMovementOrder() { return this->m_movementOrder; }
@@ -1881,6 +1885,7 @@ private:
     void _HandleCommandFollow(std::string &text, Player &fromPlayer);
     void _HandleCommandStay(std::string &text, Player &fromPlayer);
     void _HandleCommandAttack(std::string &text, Player &fromPlayer);
+    void _HandleCommandRecall(std::string &text, Player &fromPlayer);
     void _HandleCommandCast(std::string &text, Player &fromPlayer);
     void _HandleCommandSell(std::string &text, Player &fromPlayer);
     void _HandleCommandBuy(std::string &text, Player &fromPlayer);

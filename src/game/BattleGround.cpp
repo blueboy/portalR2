@@ -34,6 +34,7 @@
 #include "Util.h"
 #include "Formulas.h"
 #include "GridNotifiersImpl.h"
+#include "playerbot/PlayerbotMgr.h"
 
 namespace MaNGOS
 {
@@ -575,14 +576,33 @@ void BattleGround::Update(uint32 diff)
         {
             m_EndTime = 0;
             BattleGroundPlayerMap::iterator itr, next;
+            // Playerbot mod start
+            // Remove player(s) & bot(s) first
             for(itr = m_Players.begin(); itr != m_Players.end(); itr = next)
             {
                 next = itr;
                 ++next;
+
+                Player* const plr = sObjectMgr.GetPlayer(itr->first);
+                if (plr && plr->GetPlayerbotMgr())
+                    continue;
+
                 //itr is erased here!
                 RemovePlayerAtLeave(itr->first, true, true);// remove player from BG
                 // do not change any battleground's private variables
             }
+            // Remove playerbotmgr(s) last
+            if (!m_Players.empty())
+                for(itr = m_Players.begin(); itr != m_Players.end(); itr = next)
+                {
+                    next = itr;
+                    ++next;
+
+                    //itr is erased here!
+                    RemovePlayerAtLeave(itr->first, true, true);// remove player from BG
+                    // do not change any battleground's private variables
+                }
+            // Playerbot mod end
         }
     }
 
@@ -899,8 +919,9 @@ void BattleGround::EndBattleGround(Team winner)
 
         if (!plr->isAlive())
         {
-            plr->ResurrectPlayer(1.0f);
-            plr->SpawnCorpseBones();
+            // Dead players are resurrected on bg exit. Not necessary here.
+            // plr->ResurrectPlayer(1.0f);
+            // plr->SpawnCorpseBones();
         }
         else
         {
