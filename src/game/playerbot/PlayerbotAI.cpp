@@ -1595,9 +1595,6 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                 p.read_skip<uint32>();  // 4 randomPropertyId
                 p >> lootslot_type;     // 1 LootSlotType
 
-                if (lootslot_type != LOOT_SLOT_NORMAL && lootslot_type != LOOT_SLOT_OWNER)
-                    continue;
-
                 // skinning or collect loot flag = just auto loot everything for getting object
                 // corpse = run checks
                 if (loot_type == LOOT_SKINNING || HasCollectFlag(COLLECT_FLAG_LOOT) ||
@@ -2533,7 +2530,7 @@ void PlayerbotAI::DoLoot()
         wo->GetContactPoint(m_bot, x, y, z, 0.1f);
         m_bot->GetMotionMaster()->MovePoint(wo->GetMapId(), x, y, z);
         // give time to move to point before trying again
-        SetIgnoreUpdateTime(1);
+        SetIgnoreUpdateTime(0);
     }
 
     if (m_bot->GetDistance(wo) < INTERACTION_DISTANCE)
@@ -3756,7 +3753,8 @@ bool PlayerbotAI::CastSpell(uint32 spellId)
     {
         CastTime = (castTimeEntry->CastTime / 1000);
         DEBUG_LOG ("[PlayerbotAI]: CastSpell - Bot movement reset for casting %s (%u)", pSpellInfo->SpellName[0], spellId);
-        m_bot->StopMoving();
+        m_bot->GetUnitStateMgr().DropAllStates();
+        //m_bot->StopMoving();
     }
 
     uint32 target_type = TARGET_FLAG_UNIT;
@@ -3827,26 +3825,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId)
         m_bot->CastSpell(pTarget, pSpellInfo, true);       // actually cast spell
     }
 
-    if (IsChanneledSpell(pSpellInfo))
-        m_ignoreAIUpdatesUntilTime = time(NULL) + CastTime + 1;
-    else
-        m_ignoreAIUpdatesUntilTime = time(NULL) + 2;
-
-    m_CurrentlyCastingSpellId = 0;
-
-    // if this caused the caster to move (blink) update the position
-    // I think this is normally done on the client
-    // this should be done on spell success
-    /*
-       if (name == "Blink") {
-       float x,y,z;
-       m_bot->GetPosition(x,y,z);
-       m_bot->GetNearPoint(m_bot, x, y, z, 1, 5, 0);
-       m_bot->Relocate(x,y,z);
-       m_bot->SendHeartBeat();
-
-       }
-     */
+    m_ignoreAIUpdatesUntilTime = time(NULL) + CastTime + 1;
 
     return true;
 }
