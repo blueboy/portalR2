@@ -693,6 +693,7 @@ bool PlayerbotAI::IsItemUseful(uint32 itemid)
                 default:
                     break;
             }
+            break;
         }
         default:
             break;
@@ -1070,6 +1071,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                         return;
                 }
             }
+            break;
         }
 
         case SMSG_CAST_FAILED:
@@ -2646,6 +2648,7 @@ void PlayerbotAI::DoLoot()
                                     skillId = SkillByLockType(LockType(lockInfo->Index[i]));
                                     reqSkillValue = lockInfo->Skill[i];
                                 }
+                                break;
                         }
                     }
                 }
@@ -4264,6 +4267,7 @@ bool PlayerbotAI::HasTool(uint32 TC)
             break;
         default:
             out << "|cffffffffI do not know what tool that needs! TC (" << TC << ")";
+            break;
     }
     TellMaster(out.str().c_str());
     return false;
