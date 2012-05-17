@@ -1683,6 +1683,9 @@ SpellAuraProcResult Unit::HandleDummyAuraProc(Unit *pVictim, DamageInfo* damageI
                 // Rapture
                 case 2894:
                 {
+                    if (!procSpell)
+                        return SPELL_AURA_PROC_FAILED;
+
                     // Proc only on first effect
                     if (triggeredByAura->GetEffIndex() != EFFECT_INDEX_1)
                         return SPELL_AURA_PROC_CANT_TRIGGER;
@@ -1691,10 +1694,14 @@ SpellAuraProcResult Unit::HandleDummyAuraProc(Unit *pVictim, DamageInfo* damageI
                     if (!pCaster || !pCaster->IsInWorld())
                         return SPELL_AURA_PROC_FAILED;
 
-                    // energize caster
-                    int32 manapct1000 = 5 * (sSpellMgr.GetSpellRank(triggeredByAura->GetId()) + 2);
-                    int32 bp0 = pCaster->GetMaxPower(POWER_MANA) * manapct1000 / 1000;
-                    pCaster->CastCustomSpell(pCaster, 47755, &bp0, NULL, NULL, true);
+                    // only Power Word: Shield returns Mana to Priest
+                    if (procSpell->Id  != 47753)
+                    {
+                        // energize caster
+                        int32 manapct1000 = 5 * (sSpellMgr.GetSpellRank(triggeredByAura->GetId()) + 2);
+                        int32 bp0 = pCaster->GetMaxPower(POWER_MANA) * manapct1000 / 1000;
+                        pCaster->CastCustomSpell(pCaster, 47755, &bp0, NULL, NULL, true);
+                    }
 
                     if (!roll_chance_i(triggeredByAura->GetModifier()->m_amount) || pCaster->HasAura(63853))
                         return SPELL_AURA_PROC_FAILED;
@@ -3991,7 +3998,7 @@ SpellAuraProcResult Unit::HandleProcTriggerSpellAuraProc(Unit *pVictim, DamageIn
                 if (!procSpell)
                     return SPELL_AURA_PROC_FAILED;
                 // only allow melee finishing move to proc
-                if (!(procSpell->AttributesEx & SPELL_ATTR_EX_REQ_TARGET_COMBO_POINTS) || procSpell->Id == 26679)
+                if (!procSpell->HasAttribute(SPELL_ATTR_EX_REQ_TARGET_COMBO_POINTS) || procSpell->Id == 26679)
                     return SPELL_AURA_PROC_FAILED;
                 trigger_spell_id = 70802;
                 target = this;
@@ -5280,9 +5287,9 @@ SpellAuraProcResult Unit::IsTriggeredAtCustomProcEvent(Unit *pVictim, SpellAuraH
                 // Default rules for all other auras.
                     if (EventProcFlag || spellProcEvent)
                         return SPELL_AURA_PROC_FAILED;
-                    else if (procFlag & PROC_FLAG_TAKEN_ANY_DAMAGE &&
-                        (spellProto->AuraInterruptFlags & AURA_INTERRUPT_FLAG_DAMAGE ||
-                        spellProto->Attributes & SPELL_ATTR_BREAKABLE_BY_DAMAGE))
+                    else if ((procFlag & PROC_FLAG_TAKEN_ANY_DAMAGE) &&
+                        ((spellProto->AuraInterruptFlags & AURA_INTERRUPT_FLAG_DAMAGE) ||
+                        spellProto->HasAttribute(SPELL_ATTR_BREAKABLE_BY_DAMAGE)))
                         return SPELL_AURA_PROC_OK;
                     break;
                 }
@@ -5313,7 +5320,7 @@ SpellAuraProcResult Unit::HandleDamageShieldAuraProc(Unit* pVictim, DamageInfo* 
     procDamageInfo.CleanDamage(0, 0, BASE_ATTACK, MELEE_HIT_NORMAL);
 
 
-    pVictim->CalculateDamageAbsorbAndResist(this, &procDamageInfo, !(spellProto->AttributesEx & SPELL_ATTR_EX_CANT_REFLECTED));
+    pVictim->CalculateDamageAbsorbAndResist(this, &procDamageInfo, !spellProto->HasAttribute(SPELL_ATTR_EX_CANT_REFLECTED));
 
     DealDamageMods(pVictim, procDamageInfo.damage, &procDamageInfo.absorb);
 
