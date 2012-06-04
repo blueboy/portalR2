@@ -42,7 +42,7 @@ public:
 
     // all combat actions go here
     virtual bool DoFirstCombatManeuver(Unit*);
-    virtual void DoNextCombatManeuver(Unit*);
+    virtual bool DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     virtual void DoNonCombatActions();
@@ -55,8 +55,9 @@ public:
     Player* GetPlayerBot() { return m_bot; }
     PlayerbotAI* GetAI() { return m_ai; };
 
-
-private:
+protected:
+    bool CastSpellNoRanged(uint32 nextAction, Unit *pTarget);
+    bool CastSpellWand(uint32 nextAction, Unit *pTarget, uint32 SHOOT);
     Player* m_master;
     Player* m_bot;
     PlayerbotAI* m_ai;

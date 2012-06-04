@@ -94,7 +94,9 @@ enum PaladinSpells
     SENSE_UNDEAD_1                  = 5502,
     SHADOW_RESISTANCE_AURA_1        = 19876,
     SHIELD_OF_RIGHTEOUSNESS_1       = 53600,
-    TURN_EVIL_1                     = 10326
+    TURN_EVIL_1                     = 10326,
+    //Max rank only
+    ART_OF_WAR_1                    = 53488
 };
 //class Player;
 
@@ -106,7 +108,7 @@ public:
 
     // all combat actions go here
     bool DoFirstCombatManeuver(Unit*);
-    void DoNextCombatManeuver(Unit*);
+    bool DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -119,6 +121,10 @@ private:
     bool HealTarget (Unit *target);
     // Bless target using greater blessing if possible
     bool Bless(uint32 spellId, Unit *target);
+    //Changes aura according to spec/orders
+    void CheckAuras();
+    //Changes Seal according to spec
+    void CheckSeals();
 
     // Retribution
     uint32 RETRIBUTION_AURA,
@@ -135,7 +141,8 @@ private:
            CRUSADER_STRIKE,
            AVENGING_WRATH,
            DIVINE_STORM,
-           JUDGEMENT_OF_JUSTICE;
+           JUDGEMENT_OF_JUSTICE,
+           ART_OF_WAR;
 
     // Holy
     uint32 FLASH_OF_LIGHT,
@@ -181,7 +188,9 @@ private:
            BLESSING_OF_SANCTUARY,
            GREATER_BLESSING_OF_SANCTUARY,
            HAND_OF_SACRIFICE,
-           SHIELD_OF_RIGHTEOUSNESS;
+           SHIELD_OF_RIGHTEOUSNESS,
+           HAND_OF_RECKONING,
+           HAMMER_OF_THE_RIGHTEOUS;
 
     // cannot be protected
     uint32 FORBEARANCE;
@@ -200,6 +209,9 @@ private:
            WAR_STOMP,
            BERSERKING,
            WILL_OF_THE_FORSAKEN;
+
+    //Non-Stacking buffs
+    uint32 PRAYER_OF_SHADOW_PROTECTION;
 
     uint32 SpellSequence, CombatCounter, HealCounter;
 };

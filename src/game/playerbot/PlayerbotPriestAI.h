@@ -85,6 +85,7 @@ enum PriestSpells
     SHADOW_WORD_PAIN_1              = 589,
     SHADOWFIEND_1                   = 34433,
     SHADOWFORM_1                    = 15473,
+    SHOOT_1                                          = 5019,
     SILENCE_1                       = 15487,
     SMITE_1                         = 585,
     VAMPIRIC_EMBRACE_1              = 15286,
@@ -100,7 +101,7 @@ public:
 
     // all combat actions go here
     bool DoFirstCombatManeuver(Unit*);
-    void DoNextCombatManeuver(Unit*);
+    bool DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -109,6 +110,8 @@ public:
     bool BuffPlayer(Player *target);
 
 private:
+    bool CastSpell(uint32 nextAction, Unit *pTarget = NULL) { return CastSpellWand(nextAction, pTarget, SHOOT); }
+
     // Heals the target based off its hps
     bool HealTarget (Unit* target);
 
@@ -130,6 +133,8 @@ private:
            RESURRECTION,
            SMITE,
            CURE_DISEASE;
+    // ranged
+    uint32 SHOOT;
 
     // shadowmagic
     uint32 FADE,
@@ -142,7 +147,9 @@ private:
            VAMPIRIC_TOUCH,
            PRAYER_OF_SHADOW_PROTECTION,
            SHADOWFIEND,
-           MIND_SEAR;
+           MIND_SEAR,
+           SHADOWFORM,
+           VAMPIRIC_EMBRACE;
 
     // discipline
     uint32 POWER_WORD_SHIELD,
@@ -170,8 +177,6 @@ private:
            WAR_STOMP,
            BERSERKING,
            WILL_OF_THE_FORSAKEN;
-
-    uint32 SpellSequence, LastSpellHoly, LastSpellShadowMagic, LastSpellDiscipline;
 };
 
 #endif

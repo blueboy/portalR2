@@ -83,6 +83,7 @@ enum MageSpells
     REMOVE_CURSE_MAGE_1             = 475,
     RITUAL_OF_REFRESHMENT_1         = 43987,
     SCORCH_1                        = 2948,
+    SHOOT_2                                          = 5019,
     SLOW_1                          = 31589,
     SLOW_FALL_1                     = 130,
     SPELLSTEAL_1                    = 30449,
@@ -98,7 +99,7 @@ public:
 
     // all combat actions go here
     bool DoFirstCombatManeuver(Unit*);
-    void DoNextCombatManeuver(Unit*);
+    bool DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -107,6 +108,8 @@ public:
     bool BuffPlayer(Player *target);
 
 private:
+    bool CastSpell(uint32 nextAction, Unit *pTarget = NULL) { return CastSpellWand(nextAction, pTarget, SHOOT); }
+
     // ARCANE
     uint32 ARCANE_MISSILES,
            ARCANE_EXPLOSION,
@@ -116,6 +119,8 @@ private:
            ARCANE_BLAST,
            MIRROR_IMAGE,
            ARCANE_POWER;
+    // ranged
+    uint32 SHOOT;
 
     // FIRE
     uint32 FIREBALL,
@@ -172,11 +177,7 @@ private:
            BERSERKING,
            WILL_OF_THE_FORSAKEN;
 
-    uint32 SpellSequence,
-           LastSpellArcane,
-           LastSpellFire,
-           LastSpellFrost,
-           CONJURE_WATER,
+    uint32 CONJURE_WATER,
            CONJURE_FOOD;
 };
 
