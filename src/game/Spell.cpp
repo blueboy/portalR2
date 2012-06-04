@@ -1216,7 +1216,8 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
             if (m_damageIndex >= 0 && (m_applyMultiplierMask & (1 << m_damageIndex)))
                 dmgMultiplier = m_damageMultipliers[m_damageIndex];
 
-            caster->CalculateSpellDamage(&damageInfo, m_damage, m_spellInfo, m_attackType, dmgMultiplier);
+            damageInfo.damage = m_damage;
+            caster->CalculateSpellDamage(&damageInfo, dmgMultiplier);
         }
 
         unitTarget->CalculateAbsorbResistBlock(caster, &damageInfo, m_spellInfo);
@@ -1231,6 +1232,8 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
 
         if (damageInfo.absorb && damageInfo.damage == 0)
             damageInfo.procEx &= ~PROC_EX_DIRECT_DAMAGE;
+        else if (damageInfo.damage > 0)
+            damageInfo.procEx |= PROC_EX_DIRECT_DAMAGE;
 
         // Do triggers for unit (reflect triggers passed on hit phase for correct drop charge)
         if (m_canTrigger && missInfo != SPELL_MISS_REFLECT)
@@ -1564,6 +1567,7 @@ void Spell::HandleDelayedSpellLaunch(TargetInfo *target)
 
     // Fill base damage struct (unitTarget - is real spell target)
     DamageInfo damageInfo(caster, unitTarget, m_spellInfo);
+    damageInfo.attackType = m_attackType;
 
     // keep damage amount for reflected spells
     if (missInfo == SPELL_MISS_NONE || (missInfo == SPELL_MISS_REFLECT && target->reflectResult == SPELL_MISS_NONE))
@@ -1587,11 +1591,13 @@ void Spell::HandleDelayedSpellLaunch(TargetInfo *target)
             float dmgMultiplier = 1.0f;
             if (m_damageIndex >= 0 && (m_applyMultiplierMask & (1 << m_damageIndex)))
                 dmgMultiplier = m_damageMultipliers[m_damageIndex];
-            caster->CalculateSpellDamage(&damageInfo, m_damage, m_spellInfo, m_attackType, dmgMultiplier);
+            damageInfo.damage = m_damage;
+            caster->CalculateSpellDamage(&damageInfo, dmgMultiplier);
         }
 
         // Update damage multipliers
         for (int32 effectNumber = 0; effectNumber < MAX_EFFECT_INDEX; ++effectNumber)
+        {
             if (update_mult[effectNumber])
             {
                 // Get multiplier
@@ -1602,6 +1608,7 @@ void Spell::HandleDelayedSpellLaunch(TargetInfo *target)
                         modOwner->ApplySpellMod(m_spellInfo->Id, SPELLMOD_EFFECT_PAST_FIRST, multiplier, this);
                 m_damageMultipliers[effectNumber] *= multiplier;
             }
+        }
     }
 
     target->damage = damageInfo.damage;
@@ -6748,7 +6755,7 @@ SpellCastResult Spell::CheckPetCast(Unit* target)
                 need = true;
                 if(!target)
                 {
-                    DEBUG_LOG("Charmed creature attempt to cast spell %u, but no required target",m_spellInfo->Id);
+                    DEBUG_LOG("Spell::CheckPetCast Charmed creature %s attempt to cast spell %u, but no required target",m_caster->GetObjectGuid().GetString().c_str(),m_spellInfo->Id);
                     return SPELL_FAILED_BAD_IMPLICIT_TARGETS;
                 }
                 break;
@@ -6765,7 +6772,7 @@ SpellCastResult Spell::CheckPetCast(Unit* target)
             {
                 if (m_caster->IsHostileTo(_target))
                 {
-                    DEBUG_LOG("Charmed creature attempt to cast positive spell %u, but target (guid %s) is hostile",m_spellInfo->Id, target->GetObjectGuid().GetString().c_str());
+                    DEBUG_LOG("Spell::CheckPetCast Charmed creature %s attempt to cast positive spell %u, but target %s is hostile",m_caster->GetObjectGuid().GetString().c_str(),m_spellInfo->Id, target->GetObjectGuid().GetString().c_str());
                     return SPELL_FAILED_BAD_TARGETS;
                 }
             }
@@ -6773,7 +6780,7 @@ SpellCastResult Spell::CheckPetCast(Unit* target)
             (!m_IsTriggeredSpell &&
             (!_target->isVisibleForOrDetect(m_caster,m_caster,true) && (m_caster->GetCharmerOrOwner() && !target->isVisibleForOrDetect(m_caster->GetCharmerOrOwner(),m_caster->GetCharmerOrOwner(),true)))))
             {
-                DEBUG_LOG("Charmed creature attempt to cast spell %u, but target (guid %s) is not targetable or not detectable",m_spellInfo->Id,target->GetObjectGuid().GetString().c_str());
+                DEBUG_LOG("Spell::CheckPetCast Charmed creature %s attempt to cast spell %u, but target %s is not targetable or not detectable",m_caster->GetObjectGuid().GetString().c_str(),m_spellInfo->Id,target->GetObjectGuid().GetString().c_str());
                 return SPELL_FAILED_BAD_TARGETS;            // guessed error
             }
             else
@@ -6785,6 +6792,7 @@ SpellCastResult Spell::CheckPetCast(Unit* target)
                     dualEffect |= (m_spellInfo->EffectImplicitTargetA[j] == TARGET_DUELVSPLAYER
                                    || m_spellInfo->EffectImplicitTargetA[j] == TARGET_IN_FRONT_OF_CASTER_30
                                    || m_spellInfo->EffectImplicitTargetA[j] == TARGET_MASTER
+                                   || m_spellInfo->EffectImplicitTargetA[j] == TARGET_SELF2
                                    || m_spellInfo->EffectImplicitTargetA[j] == TARGET_IN_FRONT_OF_CASTER
                                    || m_spellInfo->EffectImplicitTargetA[j] == TARGET_EFFECT_SELECT
                                    || m_spellInfo->EffectImplicitTargetA[j] == TARGET_CASTER_COORDINATES);
@@ -6793,21 +6801,21 @@ SpellCastResult Spell::CheckPetCast(Unit* target)
                 {
                     if (!m_caster->IsHostileTo(_target) && (m_caster->GetCharmerOrOwner() && m_caster->GetCharmerOrOwner()->IsFriendlyTo(_target)))
                     {
-                        DEBUG_LOG("Charmed creature attempt to cast negative spell %u, but target (guid %s) is friendly",m_spellInfo->Id, target->GetObjectGuid().GetString().c_str());
+                        DEBUG_LOG("Spell::CheckPetCast Charmed creature %s attempt to cast negative spell %u, but target %s is friendly",m_caster->GetObjectGuid().GetString().c_str(),m_spellInfo->Id, target->GetObjectGuid().GetString().c_str());
                         return SPELL_FAILED_BAD_TARGETS;
                     }
                 }
                 else if (!m_caster->GetVehicleKit() && m_caster->IsFriendlyTo(_target) && !(!m_caster->GetCharmerOrOwner() || !m_caster->GetCharmerOrOwner()->IsFriendlyTo(_target))
                      && !dualEffect && !IsDispelSpell(m_spellInfo))
                 {
-                    DEBUG_LOG("Charmed creature attempt to cast spell %u, but target (guid %s) is not valid",m_spellInfo->Id,_target->GetObjectGuid().GetString().c_str());
+                    DEBUG_LOG("Spell::CheckPetCast Charmed creature %s attempt to cast spell %u, but target %s is not valid",m_caster->GetObjectGuid().GetString().c_str(),m_spellInfo->Id,_target->GetObjectGuid().GetString().c_str());
                     return SPELL_FAILED_BAD_TARGETS;
                 }
 
-                if (m_caster->GetObjectGuid() == _target->GetObjectGuid() && dualEffect && !IsPositiveSpell(m_spellInfo->Id))
+                if (m_caster->GetObjectGuid() == _target->GetObjectGuid() && !dualEffect && !IsPositiveSpell(m_spellInfo->Id))
                 {
-                    DEBUG_LOG("Charmed creature %s attempt to cast negative spell %u on self",_target->GetObjectGuid().GetString().c_str(), m_spellInfo->Id);
-//                    return SPELL_FAILED_BAD_TARGETS;
+                    DEBUG_LOG("Spell::CheckPetCast Charmed creature %s attempt to cast negative spell %u on self!",m_caster->GetObjectGuid().GetString().c_str(), m_spellInfo->Id);
+                    return SPELL_FAILED_BAD_TARGETS;
                 }
             }
         }
