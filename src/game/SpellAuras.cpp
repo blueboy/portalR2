@@ -3819,16 +3819,6 @@ void Aura::HandleAuraDummy(bool apply, bool Real)
         }
     }
 
-    // pet auras
-    if (PetAura const* petSpell = sSpellMgr.GetPetAura(GetId(), m_effIndex))
-    {
-        if (apply)
-            target->AddPetAura(petSpell);
-        else
-            target->RemovePetAura(petSpell);
-        return;
-    }
-
     if (GetEffIndex() == EFFECT_INDEX_0 && target->GetTypeId() == TYPEID_PLAYER)
     {
         SpellAreaForAreaMapBounds saBounds = sSpellMgr.GetSpellAreaForAuraMapBounds(GetId());
@@ -9148,10 +9138,10 @@ void Aura::PeriodicTick()
 
             damageInfo.cleanDamage = uint32(-target->ModifyPower(powerType, -damageInfo.damage));
 
-            damageInfo.cleanDamage = uint32(damageInfo.cleanDamage * spellProto->EffectMultipleValue[GetEffIndex()]);
+            damageInfo.damage = uint32(damageInfo.cleanDamage * spellProto->EffectMultipleValue[GetEffIndex()]);
 
             // maybe has to be sent different to client, but not by SMSG_PERIODICAURALOG
-            pCaster->CalculateSpellDamage(&damageInfo, damageInfo.cleanDamage, spellProto);
+            pCaster->CalculateSpellDamage(&damageInfo);
 
             damageInfo.target->CalculateAbsorbResistBlock(pCaster, &damageInfo, spellProto);
 
@@ -11128,6 +11118,19 @@ void SpellAuraHolder::HandleSpellSpecificBoosts(bool apply)
         }
     }
 
+    // pet auras add (effects not checked! must be checked at load from DB)
+    for (int32 i = 0; i < MAX_EFFECT_INDEX; ++i)
+    {
+        if (PetAura const* petSpell = sSpellMgr.GetPetAura(GetId(), SpellEffectIndex(i)))
+        {
+            if (apply)
+                m_target->AddPetAura(petSpell);
+            else
+                m_target->RemovePetAura(petSpell);
+        }
+    }
+
+    linkedSet.clear();
     if (!apply)
     {
         // Linked spells (CastOnRemove chain)
@@ -11527,8 +11530,6 @@ void SpellAuraHolder::HandleSpellSpecificBoosts(bool apply)
                 else
                     return;
             }
-            else
-                return;
             break;
         }
         case SPELLFAMILY_PRIEST:
