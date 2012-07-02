@@ -331,9 +331,11 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
             sChatLog.GuildMsg(GetPlayer(), msg, false);
 
             if (GetPlayer()->GetGuildId())
-                if (Guild* guild = sGuildMgr.GetGuildById(GetPlayer()->GetGuildId()))
+            {
+                Guild* guild = sGuildMgr.GetGuildById(GetPlayer()->GetGuildId());
+                if (guild)
                     guild->BroadcastToGuild(this, msg, lang == LANG_ADDON ? LANG_ADDON : LANG_UNIVERSAL);
-
+            }
             break;
         }
         case CHAT_MSG_OFFICER:
@@ -356,8 +358,11 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
             sChatLog.GuildMsg(GetPlayer(), msg, true);
 
             if (GetPlayer()->GetGuildId())
-                if (Guild* guild = sGuildMgr.GetGuildById(GetPlayer()->GetGuildId()))
+            {
+                Guild* guild = sGuildMgr.GetGuildById(GetPlayer()->GetGuildId());
+                if (guild)
                     guild->BroadcastToOfficers(this, msg, lang == LANG_ADDON ? LANG_ADDON : LANG_UNIVERSAL);
+            }
 
             break;
         }

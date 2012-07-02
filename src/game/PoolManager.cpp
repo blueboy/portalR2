@@ -264,7 +264,8 @@ void PoolGroup<Creature>::Despawn1Object(MapPersistentState& mapState, uint32 gu
     if (CreatureData const* data = sObjectMgr.GetCreatureData(guid))
     {
         // for non-instanceable maps pool spawn can be at different map from provided mapState
-        if (MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0))
+        MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0);
+        if (dataMapState)
         {
             dataMapState->RemoveCreatureFromGrid(guid, data);
 
@@ -282,7 +283,8 @@ void PoolGroup<GameObject>::Despawn1Object(MapPersistentState& mapState, uint32 
     if (GameObjectData const* data = sObjectMgr.GetGOData(guid))
     {
         // for non-instanceable maps pool spawn can be at different map from provided mapState
-        if (MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0))
+        MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0);
+        if (dataMapState)
         {
             dataMapState->RemoveGameobjectFromGrid(guid, data);
 
@@ -378,10 +380,9 @@ void PoolGroup<Creature>::Spawn1Object(MapPersistentState& mapState, PoolObject*
 {
     if (CreatureData const* data = sObjectMgr.GetCreatureData(obj->guid))
     {
-        //MapEntry const* mapEntry = sMapStore.LookupEntry(data->mapid);
-
         // for non-instanceable maps pool spawn can be at different map from provided mapState
-        if (MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0))
+        MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0);
+        if (dataMapState)
         {
             dataMapState->AddCreatureToGrid(obj->guid, data);
 
@@ -424,10 +425,9 @@ void PoolGroup<GameObject>::Spawn1Object(MapPersistentState& mapState, PoolObjec
 {
     if (GameObjectData const* data = sObjectMgr.GetGOData(obj->guid))
     {
-        //MapEntry const* mapEntry = sMapStore.LookupEntry(data->mapid);
-
         // for non-instanceable maps pool spawn can be at different map from provided mapState
-        if (MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0))
+        MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0);
+        if (dataMapState)
         {
             dataMapState->AddGameobjectToGrid(obj->guid, data);
 
@@ -483,7 +483,8 @@ void PoolGroup<Creature>::ReSpawn1Object(MapPersistentState& mapState, PoolObjec
     if (CreatureData const* data = sObjectMgr.GetCreatureData(obj->guid))
     {
         // for non-instanceable maps pool spawn can be at different map from provided mapState
-        if (MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0))
+        MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0);
+        if (dataMapState)
             if (Map* dataMap = dataMapState->GetMap())
                 if (Creature* pCreature = dataMap->GetCreature(data->GetObjectGuid(obj->guid)))
                     pCreature->GetMap()->Add(pCreature);
@@ -497,7 +498,8 @@ void PoolGroup<GameObject>::ReSpawn1Object(MapPersistentState& mapState, PoolObj
     if (GameObjectData const* data = sObjectMgr.GetGOData(obj->guid))
     {
         // for non-instanceable maps pool spawn can be at different map from provided mapState
-        if (MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0))
+        MapPersistentState* dataMapState = mapState.GetMapId() == data->mapid ? &mapState : sMapPersistentStateMgr.GetPersistentState(data->mapid, 0);
+        if (dataMapState)
             if (Map* dataMap = dataMapState->GetMap())
                 if (GameObject* pGameobject = dataMap->GetGameObject(ObjectGuid(HIGHGUID_GAMEOBJECT, data->id, obj->guid)))
                     pGameobject->GetMap()->Add(pGameobject);
@@ -870,7 +872,7 @@ void PoolManager::LoadFromDB()
                 goinfo->type != GAMEOBJECT_TYPE_GOOBER &&
                 goinfo->type != GAMEOBJECT_TYPE_FISHINGHOLE)
             {
-                sLog.outErrorDb("`pool_gameobject_template` has a not lootable gameobject spawn (GUID: %u Entry %u Type: %u) defined for pool id (%u), skipped.", guid, entry_id, goinfo->type, pool_id );
+                sLog.outErrorDb("`pool_gameobject_template` has a not lootable gameobject spawn (GUID: %u Entry %u Type: %u) defined for pool id (%u), skipped.", guid, entry_id, goinfo->type, pool_id);
                 continue;
             }
             if (pool_id > max_pool_id)

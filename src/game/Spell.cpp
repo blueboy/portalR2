@@ -129,17 +129,27 @@ SpellCastTargets::~SpellCastTargets()
 {
 }
 
-void SpellCastTargets::setUnitTarget(Unit *target)
+void SpellCastTargets::setUnitTarget(Unit* target)
 {
-    if (!target)
-        return;
+    if (target && !(m_targetMask & TARGET_FLAG_DEST_LOCATION))
+    {
+        m_destX = target->GetPositionX();
+        m_destY = target->GetPositionY();
+        m_destZ = target->GetPositionZ();
+    }
 
-    m_destX = target->GetPositionX();
-    m_destY = target->GetPositionY();
-    m_destZ = target->GetPositionZ();
     m_unitTarget = target;
-    m_unitTargetGUID = target->GetObjectGuid();
-    m_targetMask |= TARGET_FLAG_UNIT;
+
+    if (target)
+    {
+        m_unitTargetGUID = target->GetObjectGuid();
+        m_targetMask |= TARGET_FLAG_UNIT;
+    }
+    else
+    {
+        m_unitTargetGUID = ObjectGuid();
+        m_targetMask &= ~TARGET_FLAG_UNIT;
+    }
 }
 
 void SpellCastTargets::setDestination(float x, float y, float z)
@@ -1822,8 +1832,6 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                 case 69055:                                 // Bone Slice (ICC, Lord Marrowgar)
                 case 69278:                                 // Gas spore (ICC, Festergut)
                 case 70341:                                 // Slime Puddle (ICC, Putricide)
-                case 71336:                                 // Pact of the Darkfallen
-                case 71390:                                 // Pact of the Darkfallen
                     unMaxTargets = 2;
                     break;
                 case 28796:                                 // Poison Bolt Volley
@@ -1837,15 +1845,15 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                 case 62477:                                 // Icicle (Hodir 25man)
                 case 64598:                                 // Cosmic Smash (h) (Ulduar, Algalon)
                 case 70814:                                 // Bone Slice (ICC, Lord Marrowgar, heroic)
+                case 71221:                                 // Gas spore (Mode 1) (ICC, Festergut)
                 case 72095:                                 // Frozen Orb (h) (Vault of Archavon, Toravon)
                     unMaxTargets = 3;
                     break;
                 case 67757:                                 // Nerubian Burrower (Mode 3) (ToCrusader, Anub'arak)
-                case 71221:                                 // Gas spore (Mode 1) (ICC, Festergut)
                     unMaxTargets = 4;
                     break;
-                case 30843:                                 // Enfeeble TODO: exclude top threat target from target selection
-                case 42005:                                 // Bloodboil TODO: need to be 5 targets(players) furthest away from caster
+                case 30843:                                 // Enfeeble
+                case 42005:                                 // Bloodboil
                 case 45641:                                 // Fire Bloom (SWP, Kil'jaeden)
                 case 55665:                                 // Life Drain (h)
                 case 58917:                                 // Consume Minions
@@ -2069,16 +2077,16 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
 
             MaNGOS::NormalizeMapCoord(fx);
             MaNGOS::NormalizeMapCoord(fy);
-            target->UpdateAllowedPositionZ(fx, fy, fz);
 
-            TerrainInfo const* terrain = target->GetTerrain();
-            if (terrain)
+            Map* pMap = target->GetMap();
+            if (pMap)
             {
-                if (terrain->CheckPathAccurate(ox,oy,oz,fx,fy,fz, sWorld.getConfig(CONFIG_BOOL_CHECK_GO_IN_PATH) ? target : NULL ))
+                if (!pMap->GetHitPosition(ox,oy,oz,fx,fy,fz, target->GetPhaseMask(), -0.1f))
                     DEBUG_LOG("Spell::EffectLeap/Teleport unit %u forwarded on %f", target->GetObjectGuid().GetCounter(), target->GetDistance(fx,fy,fz));
                 else
                     DEBUG_LOG("Spell::EffectLeap/Teleport unit %u NOT forwarded on %f, real distance is %f", target->GetObjectGuid().GetCounter(), distance, target->GetDistance(fx,fy,fz));
             }
+            target->UpdateAllowedPositionZ(fx, fy, fz);
             m_targets.setDestination(fx,fy,fz);
 
             break;
@@ -2359,14 +2367,18 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                 else
                     unMaxTargets = 1;
             }
-            else if (m_spellInfo->Id == 42005)                   // Bloodboil
+            else if (m_spellInfo->Id == 42005)                   // Bloodboil (spell hits only the 5 furthest away targets)
             {
-                // manually cuting, because the spell hits only the 5 furthest away targets
                 if (targetUnitMap.size() > unMaxTargets)
                 {
                     targetUnitMap.sort(TargetDistanceOrderFarAway(m_caster));
                     targetUnitMap.resize(unMaxTargets);
                 }
+            }
+            else if (m_spellInfo->Id == 30843)              // Enfeeble (do not target current victim)
+            {
+                if (Unit* pVictim = m_caster->getVictim())
+                    targetUnitMap.remove(pVictim);
             }
             break;
         }
@@ -3107,8 +3119,10 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
             // if parent spell create dynamic object extract area from it
             if (DynamicObject* dynObj = m_caster->GetDynObject(m_triggeredByAuraSpell ? m_triggeredByAuraSpell->Id : m_spellInfo->Id))
                 m_targets.setDestination(dynObj->GetPositionX(), dynObj->GetPositionY(), dynObj->GetPositionZ());
+            // else use destination of target if no destination set (ie for Mind Sear - 53022)
+            else if (!(m_targets.m_targetMask & TARGET_FLAG_DEST_LOCATION) && m_targets.m_targetMask & TARGET_FLAG_UNIT)
+                m_targets.setDestination(m_targets.m_destX, m_targets.m_destY, m_targets.m_destZ);
             break;
-
         case TARGET_DYNAMIC_OBJECT_FRONT:
         case TARGET_DYNAMIC_OBJECT_BEHIND:
         case TARGET_DYNAMIC_OBJECT_LEFT_SIDE:
@@ -3366,7 +3380,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                 continue;
             }
 
-            if (!CheckTargetBeforeLimitation(*itr))
+            if (!CheckTargetBeforeLimitation(*itr, effIndex))
                 itr = targetUnitMap.erase(itr);
             else
                 ++itr;
@@ -5564,7 +5578,7 @@ SpellCastResult Spell::CheckCast(bool strict)
             if (target->IsTaxiFlying())
                 return SPELL_FAILED_BAD_TARGETS;
 
-            if(!m_IsTriggeredSpell && !m_spellInfo->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS) && VMAP::VMapFactory::checkSpellForLoS(m_spellInfo->Id) && !m_caster->IsWithinLOSInMap(target, strict))
+            if(!m_IsTriggeredSpell && !m_spellInfo->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS) && VMAP::VMapFactory::checkSpellForLoS(m_spellInfo->Id) && !m_caster->IsWithinLOSInMap(target))
                 return SPELL_FAILED_LINE_OF_SIGHT;
 
             // auto selection spell rank implemented in WorldSession::HandleCastSpellOpcode
@@ -5658,7 +5672,7 @@ SpellCastResult Spell::CheckCast(bool strict)
         //ignore self casts (including area casts when caster selected as target)
         if (non_caster_target)
         {
-            if(!CheckTargetCreatureType(target))
+            if(!SpellMgr::IsTargetMatchedWithCreatureType(m_spellInfo, target))
             {
                 if (target->GetTypeId() == TYPEID_PLAYER)
                     return SPELL_FAILED_TARGET_IS_PLAYER;
@@ -6715,7 +6729,7 @@ SpellCastResult Spell::CheckCast(bool strict)
     // check LOS for ground targeted spells
     if (!m_spellInfo->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS) && !m_targets.getUnitTarget() && !m_targets.getGOTarget() && !m_targets.getItemTarget())
     {
-        if (m_targets.m_destX && m_targets.m_destY && m_targets.m_destZ && !m_caster->IsWithinLOS(m_targets.m_destX, m_targets.m_destY, m_targets.m_destZ, strict))
+        if (m_targets.m_destX && m_targets.m_destY && m_targets.m_destZ && !m_caster->IsWithinLOS(m_targets.m_destX, m_targets.m_destY, m_targets.m_destZ))
             return SPELL_FAILED_LINE_OF_SIGHT;
     }
 
@@ -7804,37 +7818,6 @@ void Spell::UpdatePointers()
     m_targets.Update(m_caster);
 }
 
-bool Spell::CheckTargetCreatureType(Unit* target) const
-{
-    uint32 spellCreatureTargetMask = m_spellInfo->TargetCreatureType;
-
-    // Curse of Doom: not find another way to fix spell target check :/
-    if (m_spellInfo->SpellFamilyName == SPELLFAMILY_WARLOCK && m_spellInfo->Category == 1179)
-    {
-        // not allow cast at player
-        if (target->GetTypeId() == TYPEID_PLAYER)
-            return false;
-
-        spellCreatureTargetMask = 0x7FF;
-    }
-
-    // Dismiss Pet and Taming Lesson skipped
-    if (m_spellInfo->Id == 2641 || m_spellInfo->Id == 23356)
-        spellCreatureTargetMask =  0;
-
-    // skip creature type check for Grounding Totem
-    if (target->GetUInt32Value(UNIT_CREATED_BY_SPELL) == 8177)
-        return true;
-
-    if (spellCreatureTargetMask)
-    {
-        uint32 TargetCreatureType = target->GetCreatureTypeMask();
-
-        return !TargetCreatureType || (spellCreatureTargetMask & TargetCreatureType);
-    }
-    return true;
-}
-
 CurrentSpellTypes Spell::GetCurrentContainer()
 {
     if (IsNextMeleeSwingSpell())
@@ -7847,15 +7830,18 @@ CurrentSpellTypes Spell::GetCurrentContainer()
         return(CURRENT_GENERIC_SPELL);
 }
 
-bool Spell::CheckTargetBeforeLimitation(Unit* target)
+bool Spell::CheckTargetBeforeLimitation(Unit* target, SpellEffectIndex eff)
 {
     if (!target)
         return false;
     // check right target                                                                                       // should activ for spells 72034, 72096
     if (!target->isAlive() && !IsSpellAllowDeadTarget(m_spellInfo))
         return false;
-    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX3_TARGET_ONLY_PLAYER) && target->GetTypeId() != TYPEID_PLAYER /*&& m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SCRIPT*/)
+    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX3_TARGET_ONLY_PLAYER) && target->GetTypeId() != TYPEID_PLAYER &&
+        m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SCRIPT && m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SELF)
+    {
         return false;
+    }
     // Check Aura spell req (need for AoE spells)
     if (m_spellInfo->targetAuraSpell && !target->HasAura(m_spellInfo->targetAuraSpell))
         return false;
@@ -7871,13 +7857,16 @@ bool Spell::CheckTarget( Unit* target, SpellEffectIndex eff )
     // Check targets for creature type mask and remove not appropriate (skip explicit self target case, maybe need other explicit targets)
     if (m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SELF )
     {
-        if (!CheckTargetCreatureType(target))
+        if (!SpellMgr::IsTargetMatchedWithCreatureType(m_spellInfo, target))
             return false;
     }
 
      // check right target                                                                                       // should activ for spells 72034, 72096
-    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX3_TARGET_ONLY_PLAYER) && target->GetTypeId() != TYPEID_PLAYER /*&& m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SCRIPT*/)
+    if (m_spellInfo->HasAttribute(SPELL_ATTR_EX3_TARGET_ONLY_PLAYER) && target->GetTypeId() != TYPEID_PLAYER &&
+        m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SCRIPT && m_spellInfo->EffectImplicitTargetA[eff] != TARGET_SELF)
+    {
         return false;
+    }
     // Check Aura spell req (need for AoE spells)
     if (m_spellInfo->targetAuraSpell && !target->HasAura(m_spellInfo->targetAuraSpell))
         return false;
@@ -7977,7 +7966,7 @@ bool Spell::CheckTarget( Unit* target, SpellEffectIndex eff )
             if (target != m_caster)
             {
                 if (WorldObject* caster = GetCastingObject())
-                    if (!m_spellInfo->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS) && !target->IsWithinLOSInMap(caster, false))
+                    if (!m_spellInfo->HasAttribute(SPELL_ATTR_EX2_IGNORE_LOS) && !target->IsWithinLOSInMap(caster))
                         return false;
             }
             break;
@@ -8474,6 +8463,7 @@ void Spell::CancelGlobalCooldown()
 bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
 {
     float radius;
+    uint32 unMaxTargets = 0;
 
     if (m_spellInfo->EffectRadiusIndex[i])
         radius = GetSpellRadius(sSpellRadiusStore.LookupEntry(m_spellInfo->EffectRadiusIndex[i]));
@@ -8878,13 +8868,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tmpUnitMap;
             FillAreaTargets(tmpUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tmpUnitMap.empty())
+            for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
             {
-                for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
-                {
-                    if (*itr && (*itr)->GetTypeId() == TYPEID_PLAYER && !(*itr)->m_movementInfo.HasMovementFlag(MovementFlags(MOVEFLAG_FALLING)))
-                        targetUnitMap.push_back(*itr);
-                }
+                if (*itr && (*itr)->GetTypeId() == TYPEID_PLAYER && !(*itr)->m_movementInfo.HasMovementFlag(MovementFlags(MOVEFLAG_FALLING)))
+                    targetUnitMap.push_back(*itr);
             }
             break;
         }
@@ -8893,13 +8880,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tmpUnitMap;
             FillAreaTargets(tmpUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tmpUnitMap.empty())
+            for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
             {
-                for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
-                {
-                    if (*itr && !(*itr)->IsWithinDistInMap(m_caster, 10.0f))
-                        targetUnitMap.push_back(*itr);
-                }
+                if (*itr && !(*itr)->IsWithinDistInMap(m_caster, 10.0f))
+                    targetUnitMap.push_back(*itr);
             }
             break;
         }
@@ -8908,13 +8892,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tmpUnitMap;
             FillAreaTargets(tmpUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tmpUnitMap.empty())
+            for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
             {
-                for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
-                {
-                    if (*itr && (*itr)->isInFrontInMap(m_caster, DEFAULT_VISIBILITY_DISTANCE) && (*itr)->IsWithinLOSInMap(m_caster))
-                        targetUnitMap.push_back(*itr);
-                }
+                if (*itr && (*itr)->isInFrontInMap(m_caster, DEFAULT_VISIBILITY_DISTANCE) && (*itr)->IsWithinLOSInMap(m_caster))
+                    targetUnitMap.push_back(*itr);
             }
             break;
         }
@@ -8927,51 +8908,30 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 73144:                                 // Bone Spike Graveyard (during Bone Storm) (Icecrown Citadel, Lord Marrowgar encounter, 10H)
         case 73145:                                 // Bone Spike Graveyard (during Bone Storm) (Icecrown Citadel, Lord Marrowgar encounter, 25H)
         {
-            uint32 maxTargets = 1;
+            unMaxTargets = 1;
             switch (m_spellInfo->Id)
             {
                 case 72089:
                 case 70826:
                 case 73143:
                 case 73145:
-                    maxTargets = 3;
+                    unMaxTargets = 3;
             }
 
             radius = DEFAULT_VISIBILITY_INSTANCE;
 
             UnitList tmpUnitMap;
-            FillAreaTargets(tmpUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tmpUnitMap.empty())
+            FillAreaTargets(tmpUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
             {
-                for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
+                if ((*itr) && (*itr)->GetTypeId() == TYPEID_PLAYER && // target players only
+                    m_caster->getVictim() &&                        // don't target tank
+                    m_caster->getVictim()->GetObjectGuid() != (*itr)->GetObjectGuid())
                 {
-                    if ((*itr) && (*itr)->GetTypeId() == TYPEID_PLAYER && // target players only
-                        m_caster->getVictim() &&                        // don't target tank
-                        m_caster->getVictim()->GetObjectGuid() != (*itr)->GetObjectGuid())
-                    {
-                        targetUnitMap.push_back(*itr);
-                    }
+                    targetUnitMap.push_back(*itr);
                 }
             }
 
-            if (!targetUnitMap.empty())
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > maxTargets)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
             break;
         }
         case 69099: // Ice Pulse (Lich King)
@@ -8979,58 +8939,17 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 73777:
         case 73778:
         {
-            FillAreaTargets(targetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE, GetAffectiveCaster());
-            break;
-        }
-        case 69278:                                 // Gas spore - 10 (Festergut)
-        case 71221:                                 // Gas spore - 25 (Festergut)
-        {
-            uint32 maxTargets = 2;
-            if (m_spellInfo->Id == 71221)
-                maxTargets = 3;
-
-            UnitList tmpUnitMap;
-            FillAreaTargets(tmpUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tmpUnitMap.empty())
-            {
-                for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
-                {
-                    if ((*itr) && (*itr)->GetTypeId() == TYPEID_PLAYER)
-                        targetUnitMap.push_back(*itr);
-                }
-            }
-
-            if (!targetUnitMap.empty())
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > maxTargets)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
+            FillAreaTargets(targetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE, GetAffectiveCaster());
             break;
         }
         case 69298: // Cancel Resistant To Blight (Festergut)
         {
             UnitList tmpUnitMap;
-            FillAreaTargets(tmpUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tmpUnitMap.empty())
+            FillAreaTargets(tmpUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
             {
-                for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
-                {
-                    if ((*itr) && (*itr)->GetTypeId() == TYPEID_PLAYER)
-                        targetUnitMap.push_back(*itr);
-                }
+                if ((*itr) && (*itr)->GetTypeId() == TYPEID_PLAYER)
+                    targetUnitMap.push_back(*itr);
             }
             break;
         }
@@ -9041,15 +8960,12 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
 
             targetUnitMap.clear();
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            // stalkers in valves
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                // stalkers in valves
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    // Puddle Stalker
-                    if ((*iter)->GetEntry() == 37013 && (*iter)->GetPositionZ() < m_caster->GetPositionZ() + 3.0f)
-                        oozesMap.push_back((*iter));
-                }
+                // Puddle Stalker
+                if ((*iter)->GetEntry() == 37013 && (*iter)->GetPositionZ() < m_caster->GetPositionZ() + 3.0f)
+                    oozesMap.push_back((*iter));
             }
 
             UnitList::iterator i;
@@ -9081,13 +8997,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetEntry() == 36897)
-                        targetUnitMap.push_back((*iter));
-                }
+                if ((*iter)->GetEntry() == 36897)
+                    targetUnitMap.push_back((*iter));
             }
 
             targetUnitMap.remove(m_caster);
@@ -9101,13 +9014,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetEntry() == 36899)
-                        targetUnitMap.push_back((*iter));
-                }
+                if ((*iter)->GetEntry() == 36899)
+                    targetUnitMap.push_back((*iter));
             }
 
             targetUnitMap.remove(m_caster);
@@ -9121,13 +9031,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetEntry() == 36897)
-                        targetUnitMap.push_back((*iter));
-                }
+                if ((*iter)->GetEntry() == 36897)
+                    targetUnitMap.push_back((*iter));
             }
 
             targetUnitMap.remove(m_caster);
@@ -9144,47 +9051,24 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetTypeId() == TYPEID_PLAYER &&
-                        (*iter) != m_caster->getVictim())
-                        targetUnitMap.push_back(*iter);
-                }
+                if ((*iter)->GetTypeId() == TYPEID_PLAYER &&
+                    (*iter) != m_caster->getVictim())
+                    targetUnitMap.push_back(*iter);
             }
 
-            if (targetUnitMap.size() > 1)
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > 1)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
+            unMaxTargets = 1;
             break;
         }
         case 69762: // Unchained Magic (Sindragosa)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->getPowerType() == POWER_MANA && (*iter)->GetCharmerOrOwnerPlayerOrPlayerItself())
-                        targetUnitMap.push_back(*iter);
-                }
+                if ((*iter)->getPowerType() == POWER_MANA && (*iter)->GetCharmerOrOwnerPlayerOrPlayerItself())
+                    targetUnitMap.push_back(*iter);
             }
             break;
         }
@@ -9192,13 +9076,10 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetEntry() == 38107)
-                        targetUnitMap.push_back((*iter));
-                }
+                if ((*iter)->GetEntry() == 38107)
+                    targetUnitMap.push_back((*iter));
             }
             targetUnitMap.push_back(m_caster);
             break;
@@ -9206,50 +9087,26 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 69839: // Unstable Ooze Explosion (Rotface)
         {
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetCharmerOrOwnerPlayerOrPlayerItself() || (*iter)->GetEntry() == 36899)
-                        targetUnitMap.push_back((*iter));
-                }
+                if ((*iter)->GetCharmerOrOwnerPlayerOrPlayerItself() || (*iter)->GetEntry() == 36899)
+                    targetUnitMap.push_back((*iter));
             }
 
-            if (targetUnitMap.size() > 3)
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > 3)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
-
+            unMaxTargets = 3;
             break;
         }
         case 70117: // Icy grip (Sindragosa encounter)
         {
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if (!(*iter)->GetCharmerOrOwnerPlayerOrPlayerItself())
-                        continue;
+                if (!(*iter)->GetCharmerOrOwnerPlayerOrPlayerItself())
+                    continue;
 
-                    targetUnitMap.push_back((*iter));
-                }
+                targetUnitMap.push_back((*iter));
             }
             break;
         }
@@ -9263,35 +9120,6 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
                 radius += holder->GetStackAmount() * 0.2f;
 
             FillAreaTargets(targetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            break;
-        }
-        case 70360: // Eat Ooze (Mutated Abomination, Putricide)
-        case 72527:
-        {
-            radius = 50.0f;
-
-            UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
-            {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    Unit* unit = *iter;
-
-                    if (unit->GetEntry() == 37690) // Growing Ooze Puddle
-                    {
-                        radius = 5.0f;
-                        if (Aura* aura = unit->GetAura(70347, EFFECT_INDEX_0))
-                            radius += aura->GetStackAmount();
-
-                        if (m_caster->IsWithinDist(unit, radius))
-                        {
-                            targetUnitMap.push_back(unit);
-                            break;
-                        }
-                    }
-                }
-            }
             break;
         }
         case 70127: // Mystic Buffet (Sindragosa)
@@ -9363,25 +9191,7 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
                     ++itr;
             }
 
-            // random 1 target
-            if (!targetUnitMap.empty())
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > 1)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
+            unMaxTargets = 1;
             break;
         }
         case 70572: // Grip of Agony
@@ -9460,27 +9270,7 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
             }
 
             targetUnitMap.remove(m_caster);
-
-            // random 1 target
-            if (!targetUnitMap.empty())
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > 1)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
-
+            unMaxTargets = 1;
             break;
         }
         case 71075: // Invocation of Blood (V) Move
@@ -9489,20 +9279,18 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
+                // target the one with Invocation of Blood aura
+                if ((*iter)->HasAura(70952) ||
+                    (*iter)->HasAura(70981) ||
+                    (*iter)->HasAura(70982))
                 {
-                    // target the one with Invocation of Blood aura
-                    if ((*iter)->HasAura(70952) ||
-                        (*iter)->HasAura(70981) ||
-                        (*iter)->HasAura(70982))
-                    {
-                        targetUnitMap.push_back(*iter);
-                        break;
-                    }
+                    targetUnitMap.push_back(*iter);
+                    break;
                 }
             }
+
             break;
         }
         case 71307: // Vile Gas (Festergut)
@@ -9512,32 +9300,13 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if ((*iter)->GetEntry() == 38548)
-                        targetUnitMap.push_back(*iter);
-                }
+                if ((*iter)->GetEntry() == 38548)
+                    targetUnitMap.push_back(*iter);
             }
-            if (!targetUnitMap.empty())
-            {
-                // remove random units from the map
-                while (targetUnitMap.size() > 1)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
 
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
-            }
+            unMaxTargets = 1;
             break;
         }
         case 72873: // Malleable Goo (Putricide)
@@ -9550,7 +9319,7 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 72548:
         {
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_ALL);
             for (UnitList::iterator itr = tempTargetUnitMap.begin(); itr != tempTargetUnitMap.end(); ++itr)
             {
                 if ((*itr) && !(*itr)->GetObjectGuid().IsVehicle())
@@ -9564,7 +9333,7 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 72816:
         case 72817:
         {
-            FillAreaTargets(targetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            FillAreaTargets(targetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
             targetUnitMap.remove(m_caster);
         }
         case 72905: // Frostbolt Volley (Lady Deathwhisper)
@@ -9573,48 +9342,34 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 72908:
         {
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if (!(*iter)->GetCharmerOrOwnerPlayerOrPlayerItself())
-                        continue;
+                if (!(*iter)->GetCharmerOrOwnerPlayerOrPlayerItself())
+                    continue;
 
-                    targetUnitMap.push_back((*iter));
-                }
+                targetUnitMap.push_back((*iter));
             }
+
             break;
         }
         case 72378: // Blood Nova (Saurfang)
         case 73058:
         {
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if (!(*iter)->GetObjectGuid().IsPlayer())
-                        continue;
+                if (!(*iter)->GetObjectGuid().IsPlayer())
+                    continue;
 
-                    if (m_caster->GetDistance(*iter) < 10.0f) // stored in 72379 radius?
-                        continue;
+                if (m_caster->GetDistance(*iter) < 10.0f) // stored in 72379 radius?
+                    continue;
 
-                    targetUnitMap.push_back((*iter));
-                }
+                targetUnitMap.push_back((*iter));
             }
 
-            if (!targetUnitMap.empty())
-            {
-                UnitList::iterator i = targetUnitMap.begin();
-                Unit *pTmp;
-
-                advance(i, urand(0, targetUnitMap.size() - 1));
-                pTmp = *i;
-                targetUnitMap.clear();
-                targetUnitMap.push_back(pTmp);
-            }
+            unMaxTargets = 1;
             break;
         }
         case 72385:                                     // Boiling Blood
@@ -9624,97 +9379,75 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         {
             UnitList tempTargetUnitMap;
             FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
-                {
-                    if (!(*iter)->GetObjectGuid().IsPlayer())
-                        continue;
+                if (!(*iter)->GetObjectGuid().IsPlayer())
+                    continue;
 
-                    if ((*iter) == m_caster->getVictim())
-                        continue;
+                if ((*iter) == m_caster->getVictim())
+                    continue;
 
-                    targetUnitMap.push_back((*iter));
-                }
+                targetUnitMap.push_back((*iter));
             }
 
-            if (!targetUnitMap.empty())
-            {
-                UnitList::iterator i = targetUnitMap.begin();
-                Unit *pTmp;
-
-                advance(i, urand(0, targetUnitMap.size() - 1));
-                pTmp = *i;
-                targetUnitMap.clear();
-                targetUnitMap.push_back(pTmp);
-            }
-
+            unMaxTargets = 1;
             break;
         }
         case 71336:                                     // Pact of the Darkfallen
         {
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_AOE_DAMAGE);
-            if (!tempTargetUnitMap.empty())
+            radius = 100.0f;
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE);
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
+                if (!(*iter)->GetObjectGuid().IsPlayer() ||
+                    m_caster->getVictim() == (*iter) ||         // don't target the tank
+                    (*iter)->HasAuraOfDifficulty(70451))        // don't target offtank linked with Blood Mirror
                 {
-                    if (!(*iter)->GetObjectGuid().IsPlayer())
-                        continue;
-                    targetUnitMap.push_back((*iter));
+                    continue;
                 }
+
+                targetUnitMap.push_back((*iter));
             }
 
-            if (!targetUnitMap.empty())
+            if (m_caster->GetMap()->GetDifficulty() == RAID_DIFFICULTY_25MAN_NORMAL ||
+                m_caster->GetMap()->GetDifficulty() == RAID_DIFFICULTY_25MAN_HEROIC)
             {
-                uint32 max = 2;
-                if (m_caster->GetMap()->GetDifficulty() == RAID_DIFFICULTY_25MAN_NORMAL ||
-                    m_caster->GetMap()->GetDifficulty() == RAID_DIFFICULTY_25MAN_HEROIC)
-                {
-                    max = 3;
-                }
+                unMaxTargets = 3;
+            }
+            else
+                unMaxTargets = 2;
 
-                // remove random units from the map
-                while (targetUnitMap.size() > max)
-                {
-                    uint32 poz = urand(0, targetUnitMap.size()-1);
-                    for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
-                    {
-                        if (!*itr) continue;
-
-                        if (!poz)
-                        {
-                            targetUnitMap.erase(itr);
-                            break;
-                        }
-                    }
-                }
+            break;
+        }
+        case 71341:                                     // Pact of the Darkfallen (dmg part)
+        case 71390:                                     // Pact of the Darkfallen (visual link part)
+        {
+            UnitList tempTargetUnitMap;
+            FillAreaTargets(tempTargetUnitMap, 100.0f, PUSH_SELF_CENTER, SPELL_TARGETS_FRIENDLY);
+            for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
+            {
+                if ((*iter)->HasAura(71340))
+                    targetUnitMap.push_back((*iter));
             }
             break;
         }
-        case 71341:
+        case 71445:                                 // Twilight Bloodbolt (Lana'thel)
+        case 71471:
         {
-            if (i != EFFECT_INDEX_1)
-                return false;
-        }
-        /* no break */
-        case 71390:                                     // Pact of the Darkfallen
-        {
+            radius = DEFAULT_VISIBILITY_INSTANCE;
             UnitList tempTargetUnitMap;
-            FillAreaTargets(tempTargetUnitMap, radius, PUSH_DEST_CENTER, SPELL_TARGETS_FRIENDLY);
-            if (!tempTargetUnitMap.empty())
+            FillAreaTargets(tempTargetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_ALL);
+            for (UnitList::iterator itr = tempTargetUnitMap.begin(); itr != tempTargetUnitMap.end();++itr)
             {
-                for (UnitList::const_iterator iter = tempTargetUnitMap.begin(); iter != tempTargetUnitMap.end(); ++iter)
+                if ((*itr) && (*itr)->GetTypeId() == TYPEID_PLAYER &&
+                    !(*itr)->HasAuraOfDifficulty(70445) && !(*itr)->HasAuraOfDifficulty(70451)) // Blood Mirror
                 {
-                    if (!(*iter)->GetObjectGuid().IsPlayer())
-                        continue;
-
-                    if (!(*iter)->HasAura(71340))
-                        continue;
-
-                    targetUnitMap.push_back((*iter));
+                    targetUnitMap.push_back(*itr);
                 }
             }
+
+            unMaxTargets = 2;
             break;
         }
         case 71447:                                 // Bloodbolt Splash 10N
@@ -9722,7 +9455,7 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
         case 71482:                                 // Bloodbolt Splash 10H
         case 71483:                                 // Bloodbolt Splash 25H
         {
-            FillAreaTargets(targetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_AOE_DAMAGE, GetAffectiveCaster());
+            FillAreaTargets(targetUnitMap, radius, PUSH_SELF_CENTER, SPELL_TARGETS_FRIENDLY);
             targetUnitMap.remove(m_caster);
             break;
         }
@@ -9801,16 +9534,39 @@ bool Spell::FillCustomTargetMap(SpellEffectIndex i, UnitList &targetUnitMap)
             FillAreaTargets(tempTargetUnitMap, 20.0f, PUSH_SELF_CENTER, SPELL_TARGETS_FRIENDLY);
             tempTargetUnitMap.remove(m_caster);
             if (!tempTargetUnitMap.empty())
-            {
-                UnitList::iterator i = tempTargetUnitMap.begin();
-                advance(i, urand(0, tempTargetUnitMap.size() - 1));
-                targetUnitMap.push_back(*i);
-                return true;
-            }
-            return false;
+                unMaxTargets = 1;
+            else
+                return false;
+
+            break;
         }
         default:
             return false;
     }
+
+    // random targets
+    if (unMaxTargets)
+    {
+        if (!targetUnitMap.empty())
+        {
+            // remove random units from the map
+            while (targetUnitMap.size() > unMaxTargets)
+            {
+                uint32 poz = urand(0, targetUnitMap.size()-1);
+                for (UnitList::iterator itr = targetUnitMap.begin(); itr != targetUnitMap.end(); ++itr, --poz)
+                {
+                    if (!*itr)
+                        continue;
+
+                    if (!poz)
+                    {
+                        targetUnitMap.erase(itr);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     return true;
 }

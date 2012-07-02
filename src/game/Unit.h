@@ -893,32 +893,27 @@ enum MeleeHitOutcome
 // Spell damage info structure based on structure sending in SMSG_SPELLNONMELEEDAMAGELOG opcode
 struct DamageInfo
 {
-    // Constructors for use with spell damage
-    DamageInfo(Unit *_attacker, Unit *_target, uint32 _SpellID)
+    // Constructors for use with spell and melee damage
+    DamageInfo(Unit *_attacker, Unit *_target, uint32 _SpellID, uint32 _damage)
         :  attacker(_attacker), target(_target), SpellID(_SpellID), m_spellInfo(NULL)
-        { Reset(); };
+        { Reset(_damage); };
 
-    DamageInfo(Unit *_attacker, Unit *_target, SpellEntry const* spellInfo)
+    DamageInfo(Unit *_attacker, Unit *_target, SpellEntry const* spellInfo, uint32 _damage = 0)
         :  attacker(_attacker), target(_target), m_spellInfo(spellInfo), SpellID(0)
-        { Reset(); };
-
-    // Constructor for use with melee damage
-    DamageInfo(Unit *_attacker, Unit *_target)
-        : attacker(_attacker), target(_target),  SpellID(0), m_spellInfo(NULL)
-        { Reset(); };
+        { Reset(_damage); };
 
     // Constructors for use on temporary operation
     DamageInfo(uint32 _damage)
         : attacker(NULL), target(NULL), SpellID(0), m_spellInfo(NULL)
-        { Reset(); };
+        { Reset(_damage); };
 
     DamageInfo(uint32 _damage, uint32 _SpellID)
         : attacker(NULL), target(NULL), SpellID(_SpellID), m_spellInfo(NULL)
-        { Reset(); };
+        { Reset(_damage); };
 
     DamageInfo(uint32 _damage, SpellEntry const* spellInfo)
         : attacker(NULL), target(NULL), m_spellInfo(spellInfo), SpellID(0)
-        { Reset(); };
+        { Reset(_damage); };
 
     // main operations
     void Reset(uint32 _damage = 0);
@@ -938,6 +933,7 @@ struct DamageInfo
     // Spell parameters
     uint32            SpellID;
     SpellEntry const* m_spellInfo;
+    SpellEntry const* GetSpellProto() const { return m_spellInfo; }
     SpellSchoolMask   SchoolMask();
 
     // Damage divide
@@ -946,6 +942,14 @@ struct DamageInfo
     uint32 resist;
     uint32 blocked;
     int32  cleanDamage;          // Used only for rage calculation
+    uint32 reduction;
+
+    // Damage calculation
+    uint32 baseDamage;
+    uint32 bonusDone;
+    uint32 bonusTaken;
+    uint32 Damage() { return (baseDamage + bonusDone + bonusTaken
+                           - reduction - absorb - resist - blocked);};
 
     // Various types
     WeaponAttackType attackType;
@@ -1311,8 +1315,8 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         uint32 getLevel() const { return GetUInt32Value(UNIT_FIELD_LEVEL); }
         virtual uint32 GetLevelForTarget(Unit const* /*target*/) const { return getLevel(); }
         void SetLevel(uint32 lvl);
-        uint8 getRace() const { return GetByteValue(UNIT_FIELD_BYTES_0, 0); }
-        uint32 getRaceMask() const { return 1 << (getRace()-1); }
+        uint8 getRace() const;
+        uint32 getRaceMask() const { return getRace() ? 1 << (getRace()-1) : 0; }
         uint8 getClass() const { return GetByteValue(UNIT_FIELD_BYTES_0, 1); }
         uint32 getClassMask() const { return 1 << (getClass()-1); }
         uint8 getGender() const { return GetByteValue(UNIT_FIELD_BYTES_0, 2); }
@@ -1525,7 +1529,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         bool IsIgnoreUnitState(SpellEntry const *spell, IgnoreUnitState ignoreState);
 
         bool isTargetableForAttack(bool inversAlive = false) const;
-        virtual bool isPassiveToHostile() { return HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE); }
+        bool isPassiveToHostile() const { return HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PASSIVE); }
 
         virtual bool IsInWater() const;
         virtual bool IsUnderWater() const;
@@ -1857,7 +1861,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void AddThreat(Unit* pVictim, float threat = 0.0f, bool crit = false, SpellSchoolMask schoolMask = SPELL_SCHOOL_MASK_NONE, SpellEntry const *threatSpell = NULL);
         float ApplyTotalThreatModifier(float threat, SpellSchoolMask schoolMask = SPELL_SCHOOL_MASK_NORMAL);
         void DeleteThreatList();
-        bool IsSecondChoiceTarget(Unit* pTarget, bool checkThreatArea);
+        bool IsSecondChoiceTarget(Unit* pTarget, bool checkThreatArea) const;
         bool SelectHostileTarget();
         void TauntApply(Unit* pVictim);
         void TauntFadeOut(Unit *taunter);
@@ -2046,8 +2050,6 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         float GetSpeedRate( UnitMoveType mtype ) const { return m_speed_rate[mtype]; }
         void SetSpeedRate(UnitMoveType mtype, float rate, bool forced = false);
 
-        bool isHover() const { return HasAuraType(SPELL_AURA_HOVER); }
-
         void KnockBackFrom(Unit* target, float horizontalSpeed, float verticalSpeed);
         void KnockBackPlayerWithAngle(float angle, float horizontalSpeed, float verticalSpeed);
 
@@ -2151,7 +2153,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void _SetAINotifyScheduled(bool on) { m_AINotifyScheduled = on;}       // only for call from RelocationNotifyEvent code
         void OnRelocated();
 
-        bool IsLinkingEventTrigger() { return m_isCreatureLinkingTrigger; }
+        bool IsLinkingEventTrigger() const { return m_isCreatureLinkingTrigger; }
 
     protected:
         explicit Unit ();
