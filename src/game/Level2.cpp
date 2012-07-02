@@ -79,7 +79,8 @@ bool ChatHandler::HandleMuteCommand(char* args)
     // find only player from same account if any
     if (!target)
     {
-        if (WorldSession* session = sWorld.FindSession(account_id))
+        WorldSession* session = sWorld.FindSession(account_id);
+        if (session)
             target = session->GetPlayer();
     }
 
@@ -128,7 +129,8 @@ bool ChatHandler::HandleUnmuteCommand(char* args)
     // find only player from same account if any
     if (!target)
     {
-        if (WorldSession* session = sWorld.FindSession(account_id))
+        WorldSession* session = sWorld.FindSession(account_id);
+        if (session)
             target = session->GetPlayer();
     }
 
@@ -2809,8 +2811,9 @@ bool ChatHandler::HandleTicketCommand(char* args)
 
         ticket->SetResponseText(args);
 
-        if (Player* pl = sObjectMgr.GetPlayer(ticket->GetPlayerGuid()))
-            pl->GetSession()->SendGMResponse(ticket);
+        Player* plr = sObjectMgr.GetPlayer(ticket->GetPlayerGuid());
+        if (plr)
+            plr->GetSession()->SendGMResponse(ticket);
 
         return true;
     }
@@ -2892,10 +2895,11 @@ bool ChatHandler::HandleDelTicketCommand(char *args)
         sTicketMgr.Delete(guid);
 
         //notify player
-        if (Player* pl = sObjectMgr.GetPlayer(guid))
+        Player* plr = sObjectMgr.GetPlayer(guid);
+        if (plr)
         {
-            pl->GetSession()->SendGMTicketGetTicket(0x0A);
-            PSendSysMessage(LANG_COMMAND_TICKETPLAYERDEL, GetNameLink(pl).c_str());
+            plr->GetSession()->SendGMTicketGetTicket(0x0A);
+            PSendSysMessage(LANG_COMMAND_TICKETPLAYERDEL, GetNameLink(plr).c_str());
         }
         else
             PSendSysMessage(LANG_COMMAND_TICKETDEL);
@@ -4815,10 +4819,6 @@ bool ChatHandler::HandleLookupPoolCommand(char * args)
         return false;
 
     std::string namepart = args;
-
-    //Player* player = m_session ? m_session->GetPlayer() : NULL;
-    //MapPersistentState* mapState = player ? player->GetMap()->GetPersistentState() : NULL;
-
     strToLower(namepart);
 
     uint32 counter = 0;
@@ -4862,7 +4862,6 @@ bool ChatHandler::HandlePoolListCommand(char* args)
     // spawn pools for expected map or for not initialized shared pools state for non-instanceable maps
     for(uint16 pool_id = 0; pool_id < sPoolMgr.GetMaxPoolId(); ++pool_id)
     {
-        //PoolTemplateData const& pool_template = sPoolMgr.GetPoolTemplate(pool_id);
         if (sPoolMgr.GetPoolTemplate(pool_id).CanBeSpawnedAtMap(mapState->GetMapEntry()))
         {
             ShowPoolListHelper(pool_id);

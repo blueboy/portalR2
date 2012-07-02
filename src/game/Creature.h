@@ -538,6 +538,8 @@ class MANGOS_DLL_SPEC Creature : public Unit
 
         uint32 GetLevelForTarget(Unit const* target) const; // overwrite Unit::GetLevelForTarget for boss level support
 
+        uint8 getRace() const;
+
         bool IsInEvadeMode() const;
 
         bool AIM_Initialize();

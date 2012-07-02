@@ -264,7 +264,7 @@ BattleGround::BattleGround()
     m_InvitedHorde      = 0;
     m_ArenaType         = ARENA_TYPE_NONE;
     m_IsArena           = false;
-    m_Winner            = 2;
+    m_Winner            = TEAM_NONE;
     m_StartTime         = 0;
     m_Events            = 0;
     m_IsRated           = false;
@@ -466,7 +466,8 @@ void BattleGround::Update(uint32 diff)
 
         for (BattleGroundPlayerMap::const_iterator itr = m_Players.begin(); itr != m_Players.end(); ++itr)
         {
-            if (Player* plr = sObjectMgr.GetPlayer(itr->first))
+            Player* plr = sObjectMgr.GetPlayer(itr->first);
+            if (plr)
             {
                 TeamIndex teamIndex = GetTeamIndex(plr->GetTeam());
                 if (!plr->isGameMaster() && plr->GetPositionZ() < deadly_Z)
@@ -525,7 +526,8 @@ void BattleGround::Update(uint32 diff)
                 // remove auras with duration lower than 30s and arena preparation
                 for (BattleGroundPlayerMap::const_iterator itr = m_Players.begin(); itr != m_Players.end(); ++itr)
                 {
-                    if (Player *plr = sObjectMgr.GetPlayer(itr->first))
+                    Player* plr = sObjectMgr.GetPlayer(itr->first);
+                    if (plr)
                     {
                         // BG Status packet
                         WorldPacket status;
@@ -553,8 +555,11 @@ void BattleGround::Update(uint32 diff)
                 PlaySoundToAll(SOUND_BG_START);
 
                 for(BattleGroundPlayerMap::const_iterator itr = m_Players.begin(); itr != m_Players.end(); ++itr)
-                    if (Player* plr = sObjectMgr.GetPlayer(itr->first))
+                {
+                    Player* plr = sObjectMgr.GetPlayer(itr->first);
+                    if (plr)
                         plr->RemoveAurasDueToSpell(SPELL_PREPARATION);
+                }
                 //Announce BG starting
                 if (sWorld.getConfig(CONFIG_BOOL_BATTLEGROUND_QUEUE_ANNOUNCER_START))
                 {
@@ -644,7 +649,8 @@ void BattleGround::SendPacketToAll(WorldPacket *packet)
         if (itr->second.OfflineRemoveTime)
             continue;
 
-        if (Player *plr = sObjectMgr.GetPlayer(itr->first))
+        Player* plr = sObjectMgr.GetPlayer(itr->first);
+        if (plr)
             plr->GetSession()->SendPacket(packet);
         else
             sLog.outError("BattleGround:SendPacketToAll: %s not found!", itr->first.GetString().c_str());
@@ -844,22 +850,15 @@ void BattleGround::EndBattleGround(Team winner)
         winmsg_id = isBattleGround() ? LANG_BG_A_WINS : LANG_ARENA_GOLD_WINS;
 
         PlaySoundToAll(SOUND_ALLIANCE_WINS);                // alliance wins sound
-
-        SetWinner(WINNER_ALLIANCE);
     }
     else if (winner == HORDE)
     {
         winmsg_id = isBattleGround() ? LANG_BG_H_WINS : LANG_ARENA_GREEN_WINS;
 
         PlaySoundToAll(SOUND_HORDE_WINS);                   // horde wins sound
+    }
 
-        SetWinner(WINNER_HORDE);
-    }
-    else
-    {
-        SetWinner(WINNER_NONE);
-        winmsg_id = LANG_BG_WIN_NONE;
-    }
+    SetWinner(winner);
 
     SetStatus(STATUS_WAIT_LEAVE);
 
@@ -1308,7 +1307,7 @@ void BattleGround::RemovePlayerAtLeave(ObjectGuid guid, bool Transport, bool Sen
 // this method is called when no players remains in battleground
 void BattleGround::Reset()
 {
-    SetWinner(WINNER_NONE);
+    SetWinner(TEAM_NONE);
     SetStatus(STATUS_WAIT_QUEUE);
     SetStartTime(0);
     SetEndTime(0);

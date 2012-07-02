@@ -216,7 +216,8 @@ GroupQueueInfo * BattleGroundQueue::AddGroup(Player *leader, Group* grp, BattleG
         //announce to world, this code needs mutex
         if (arenaType == ARENA_TYPE_NONE && !isRated && !isPremade && sWorld.getConfig(CONFIG_UINT32_BATTLEGROUND_QUEUE_ANNOUNCER_JOIN))
         {
-            if (BattleGround* bg = sBattleGroundMgr.GetBattleGroundTemplate(ginfo->BgTypeId))
+            BattleGround* bg = sBattleGroundMgr.GetBattleGroundTemplate(ginfo->BgTypeId);
+            if (bg)
             {
                 char const* bgName = bg->GetName();
                 uint32 MinPlayers = bg->GetMinPlayersPerTeam();
@@ -1327,11 +1328,12 @@ void BattleGroundMgr::BuildPvpLogDataPacket(WorldPacket *data, BattleGround *bg)
         }
         else
         {
-            Player *plr = sObjectMgr.GetPlayer(itr->first);
             Team team = bg->GetPlayerTeam(itr->first);
-            if (!team && plr)
-                team = plr->GetTeam();
-            if (( bg->GetWinner()==0 && team == ALLIANCE ) || ( bg->GetWinner()==1 && team==HORDE ))
+            if (!team)
+                if (Player* player = sObjectMgr.GetPlayer(itr->first))
+                    team = player->GetTeam();
+
+            if (bg->GetWinner() == team && team != TEAM_NONE)
                 *data << uint8(1);
             else
                 *data << uint8(0);

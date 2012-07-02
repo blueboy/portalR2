@@ -308,6 +308,7 @@ class MANGOS_DLL_SPEC Aura
         void HandleAuraModReflectSpells(bool Apply, bool Real);
         void HandleAuraModStat(bool Apply, bool Real);
         void HandleDetectAmore(bool Apply, bool Real);
+        void HandleAuraFakeInebriation(bool Apply, bool Real);
         void HandleAuraModIncreaseSpeed(bool Apply, bool Real);
         void HandleAuraModIncreaseMountedSpeed(bool Apply, bool Real);
         void HandleAuraModIncreaseFlightSpeed(bool Apply, bool Real);
@@ -381,6 +382,7 @@ class MANGOS_DLL_SPEC Aura
         void HandleAuraModAttackPowerOfStatPercent(bool apply, bool Real);
         void HandleAuraModAttackPowerOfArmor(bool apply, bool Real);
         void HandleSpiritOfRedemption(bool apply, bool Real);
+        void HandleAuraAoECharm(bool apply, bool Real);
         void HandleModManaRegen(bool apply, bool Real);
         void HandleComprehendLanguage(bool apply, bool Real);
         void HandleShieldBlockValue(bool apply, bool Real);

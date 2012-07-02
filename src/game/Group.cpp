@@ -235,7 +235,8 @@ bool Group::LoadMemberFromDB(uint32 guidLow, uint8 subgroup, GroupFlagMask flags
 
     SubGroupCounterIncrease(subgroup);
 
-    if (Player* player = sObjectMgr.GetPlayer(member.guid))
+    Player* player = sObjectMgr.GetPlayer(member.guid);
+    if (player)
     {
         if (player->IsInWorld())
             player->GetLFGState()->SetRoles(roles);
@@ -256,8 +257,11 @@ void Group::ConvertToRaid()
 
     // update quest related GO states (quest activity dependent from raid membership)
     for(member_citerator citr = m_memberSlots.begin(); citr != m_memberSlots.end(); ++citr)
-        if(Player* player = sObjectMgr.GetPlayer(citr->guid))
+    {
+        Player* player = sObjectMgr.GetPlayer(citr->guid);
+        if(player)
             player->UpdateForQuestWorldObjects();
+    }
 }
 
 bool Group::AddInvite(Player *player)
@@ -334,7 +338,8 @@ bool Group::AddMember(ObjectGuid guid, const char* name)
     if (isLFDGroup())
         sLFGMgr.AddMemberToLFDGroup(guid);
 
-    if (Player* player = sObjectMgr.GetPlayer(guid))
+    Player* player = sObjectMgr.GetPlayer(guid);
+    if (player)
     {
         if (!IsLeader(player->GetObjectGuid()) && !isBGGroup())
         {
@@ -389,7 +394,8 @@ uint32 Group::RemoveMember(ObjectGuid guid, uint8 method)
     {
         bool leaderChanged = _removeMember(guid);
 
-        if (Player *player = sObjectMgr.GetPlayer( guid ))
+        Player* player = sObjectMgr.GetPlayer(guid);
+        if (player)
         {
             // quest related GO state dependent from raid membership
             if (isRaidGroup())

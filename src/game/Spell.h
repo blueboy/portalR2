@@ -356,7 +356,7 @@ class Spell
         void EffectKillCreditPersonal(SpellEffectIndex eff_idx);
         void EffectKillCreditGroup(SpellEffectIndex eff_idx);
         void EffectQuestFail(SpellEffectIndex eff_idx);
-        void EffectQuestStart(SpellEffectIndex eff_idx);
+        void EffectQuestOffer(SpellEffectIndex eff_idx);
         void EffectActivateRune(SpellEffectIndex eff_idx);
         void EffectSuspendGravity(SpellEffectIndex eff_idx);
         void EffectUntrainTalents(SpellEffectIndex eff_idx);
@@ -439,7 +439,7 @@ class Spell
         template<typename T> WorldObject* FindCorpseUsing();
 
         bool CheckTarget( Unit* target, SpellEffectIndex eff );
-        bool CheckTargetBeforeLimitation(Unit* target);
+        bool CheckTargetBeforeLimitation(Unit* target, SpellEffectIndex eff);
         SpellCastResult CanAutoCast(Unit* target);
 
         static void MANGOS_DLL_SPEC SendCastResult(Player* caster, SpellEntry const* spellInfo, uint8 cast_count, SpellCastResult result);
@@ -513,8 +513,6 @@ class Spell
         int32 GetPowerCost() const { return m_powerCost; }
 
         void UpdatePointers();                              // must be used at call Spell code after time delay (non triggered spell cast/update spell call/etc)
-
-        bool CheckTargetCreatureType(Unit* target) const;
 
         void AddTriggeredSpell(SpellEntry const* spellInfo) { m_TriggerSpells.push_back(spellInfo); }
         void AddPrecastSpell(SpellEntry const* spellInfo) { m_preCastSpells.push_back(spellInfo); }
