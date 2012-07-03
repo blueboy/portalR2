@@ -216,7 +216,7 @@ CombatManeuverReturns PlayerbotDruidAI::DoNextCombatManeuver(Unit *pTarget)
     //            return RETURN_CONTINUE;
     //        return RETURN_NO_ACTION_ERROR;
     //    default:
-    //        break; 
+    //        break;
     //}
 
 

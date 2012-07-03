@@ -94,7 +94,7 @@ Unit* PlayerbotClassAI::GetHealTarget()
     }
 
     // We have a list of all valid targets, fill in type (heal, tank, dps, master)
-    for (int i = 0; i < targets.size(); i++)
+    for (uint8 i = 0; i < targets.size(); i++)
     {
         // is a bot
         if (targets.at(i).p->GetPlayerbotAI())

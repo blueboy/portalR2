@@ -234,7 +234,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 if (group)
                 {
                     bool isChanged = sLFGMgr.RoleChanged(bot, bot->GetPlayerbotAI()->GetRole());
-                    // DEBUG_LOG("CMSG_LFG_SET_ROLES: Group %u, Player %u, Roles: %u %s", group->GetObjectGuid().GetCounter(), bot->GetObjectGuid().GetCounter(), bot->GetPlayerbotAI()->GetRole(), isChanged ? "changed" : "not changed");
+                    DEBUG_LOG("CMSG_LFG_SET_ROLES: Group %u, Player %u, Roles: %u %s", group->GetObjectGuid().GetCounter(), bot->GetObjectGuid().GetCounter(), bot->GetPlayerbotAI()->GetRole(), isChanged ? "changed" : "not changed");
                     sLFGMgr.UpdateRoleCheck(group);
                 }
                 else
