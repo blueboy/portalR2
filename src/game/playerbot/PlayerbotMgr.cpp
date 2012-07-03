@@ -770,16 +770,19 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             p >> itemSlot;    //loot index
             p >> rollType;    //need,greed or pass on roll
 
-            Creature *c = m_master->GetMap()->GetCreature(Guid);
-            GameObject *go = m_master->GetMap()->GetGameObject(Guid);
-            if (!c)
-                if (!go)
-                    return;
+            if (Guid.IsCreature())
+            {
+                if (Creature* c = m_master->GetMap()->GetCreature(Guid))
+                    loot = &c->loot;
+            }
+            else if (Guid.IsGameObject())
+            {
+                if (GameObject* go = m_master->GetMap()->GetGameObject(Guid))
+                    loot = &go->loot;
+            }
 
-            if (c)
-                loot = &c->loot;
-            else
-                loot = &go->loot;
+            if (!loot)
+                return;
 
             LootItem& lootItem = loot->items[itemSlot];
 
@@ -1478,9 +1481,12 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
                 SetSentErrorMessage(true);
                 return false;
             }
-            QueryResult *resultlvl = CharacterDatabase.PQuery("SELECT guid FROM playerbot_saved_data WHERE guid = '%u'", guid);
-            if (resultlvl)
-                CharacterDatabase.DirectPExecute("INSERT INTO playerbot_saved_data (guid,bot_primary_order,bot_secondary_order,primary_target,secondary_target,pname,sname) VALUES ('%u',0,0,0,0,'','')", guid);
+            QueryResult *resultlvl = CharacterDatabase.PQuery("SELECT guid FROM playerbot_saved_data WHERE guid = '%u'", guid.GetCounter());
+            if (!resultlvl)
+                CharacterDatabase.DirectPExecute("INSERT INTO playerbot_saved_data (guid,bot_primary_order,bot_secondary_order,primary_target,secondary_target,pname,sname) VALUES ('%u',0,0,0,0,'','')", guid.GetCounter());
+            else
+                delete resultlvl;
+
             mgr->GetPlayerBot(guid)->GetPlayerbotAI()->SetCombatOrderByStr(orderStr, target);
         }
         return true;

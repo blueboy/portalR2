@@ -107,8 +107,8 @@ public:
     virtual ~PlayerbotPaladinAI();
 
     // all combat actions go here
-    bool DoFirstCombatManeuver(Unit*);
-    bool DoNextCombatManeuver(Unit*);
+    CombatManeuverReturns DoFirstCombatManeuver(Unit*);
+    CombatManeuverReturns DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -118,7 +118,9 @@ public:
 
 private:
     // Heals the target based off its hps
-    bool HealTarget (Unit *target);
+    CombatManeuverReturns HealTarget (Unit *target);
+    Unit* GetHealTarget() { return PlayerbotClassAI::GetHealTarget(); }
+
     // Bless target using greater blessing if possible
     bool Bless(uint32 spellId, Unit *target);
     //Changes aura according to spec/orders

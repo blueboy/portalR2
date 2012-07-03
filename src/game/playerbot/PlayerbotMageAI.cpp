@@ -85,15 +85,15 @@ PlayerbotMageAI::PlayerbotMageAI(Player* const master, Player* const bot, Player
 
 PlayerbotMageAI::~PlayerbotMageAI() {}
 
-bool PlayerbotMageAI::DoFirstCombatManeuver(Unit *pTarget)
+CombatManeuverReturns PlayerbotMageAI::DoFirstCombatManeuver(Unit* /*pTarget*/)
 {
-    return false;
+    return RETURN_NO_ACTION_OK;
 }
 
-bool PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
+CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
 {
-    if (!m_ai)  return false;
-    if (!m_bot) return false;
+    if (!m_ai)  return RETURN_NO_ACTION_ERROR;
+    if (!m_bot) return RETURN_NO_ACTION_ERROR;
 
     Unit* pVictim = pTarget->getVictim();
     float dist = m_bot->GetCombatDistance(pTarget);
@@ -104,9 +104,9 @@ bool PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
         case PlayerbotAI::SCENARIO_DUEL:
             if (FIREBALL > 0)
                 if (CastSpell(FIREBALL, pTarget))
-                    return true;
+                    return RETURN_CONTINUE;
 
-            return false;
+            return RETURN_NO_ACTION_ERROR;
         default:
             break;
     }
@@ -135,7 +135,7 @@ bool PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
             // Not an elite. You could insert FEAR here but in any PvE situation that's 90-95% likely
             // to worsen the situation for the group. ... So please don't.
             CastSpell(SHOOT, pTarget);
-            return true;
+            return RETURN_CONTINUE;
         }
     }
 
@@ -155,7 +155,7 @@ bool PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
                 if (CastSpell(BLIZZARD, pTarget))
                 {
                     m_ai->SetIgnoreUpdateTime(8);
-                    return true;
+                    return RETURN_CONTINUE;
                 }
             }
             if (CONE_OF_COLD > 0 && dist <= ATTACK_DISTANCE && !pTarget->HasAura(CONE_OF_COLD, EFFECT_INDEX_0) && m_ai->GetManaPercent() >= 35)
@@ -213,7 +213,7 @@ bool PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
                 if (CastSpell(ARCANE_MISSILES, pTarget))
                 {
                     m_ai->SetIgnoreUpdateTime(3);
-                    return true;
+                    return RETURN_CONTINUE;
                 }
             }
             if (ARCANE_EXPLOSION > 0 && m_ai->GetAttackerCount() >= 3 && dist <= ATTACK_DISTANCE && m_ai->GetManaPercent() >= 27)
@@ -247,10 +247,10 @@ bool PlayerbotMageAI::DoNextCombatManeuver(Unit *pTarget)
     if (m_ai->GetManaPercent() >= 25)
     {
         m_ai->TellMaster("Couldn't find an appropriate spell.");
-        return false;
+        return RETURN_NO_ACTION_UNKNOWN;
     }
 
-    return false;
+    return RETURN_NO_ACTION_UNKNOWN;
 } // end DoNextCombatManeuver
 
 void PlayerbotMageAI::DoNonCombatActions()
@@ -284,7 +284,7 @@ void PlayerbotMageAI::DoNonCombatActions()
     if (master->GetGroup())
     {
         // Buff master with group buff...
-        if (!master->IsInDuel(master))
+        if (!master->IsInDuel())
             if (ARCANE_BRILLIANCE && m_ai->HasSpellReagents(ARCANE_BRILLIANCE))
                 if (m_ai->Buff(ARCANE_BRILLIANCE, master))
                     return;
@@ -307,7 +307,7 @@ void PlayerbotMageAI::DoNonCombatActions()
 
     }
     // There is no group, buff master
-    else if (master->isAlive() && !master->IsInDuel(master))
+    else if (master->isAlive() && !master->IsInDuel())
         if (BuffPlayer(master))
             return;
 

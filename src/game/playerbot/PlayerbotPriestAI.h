@@ -100,8 +100,8 @@ public:
     virtual ~PlayerbotPriestAI();
 
     // all combat actions go here
-    bool DoFirstCombatManeuver(Unit*);
-    bool DoNextCombatManeuver(Unit*);
+    CombatManeuverReturns DoFirstCombatManeuver(Unit*);
+    CombatManeuverReturns DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -110,10 +110,11 @@ public:
     bool BuffPlayer(Player *target);
 
 private:
-    bool CastSpell(uint32 nextAction, Unit *pTarget = NULL) { return CastSpellWand(nextAction, pTarget, SHOOT); }
+    CombatManeuverReturns CastSpell(uint32 nextAction, Unit *pTarget = NULL) { return CastSpellWand(nextAction, pTarget, SHOOT); }
 
     // Heals the target based off its hps
-    bool HealTarget (Unit* target);
+    CombatManeuverReturns HealTarget(Unit* target);
+    Unit* GetHealTarget() { return PlayerbotClassAI::GetHealTarget(); }
 
     // holy
     uint32 BINDING_HEAL,

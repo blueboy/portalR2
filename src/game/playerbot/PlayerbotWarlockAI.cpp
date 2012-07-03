@@ -99,17 +99,17 @@ PlayerbotWarlockAI::PlayerbotWarlockAI(Player* const master, Player* const bot, 
 
 PlayerbotWarlockAI::~PlayerbotWarlockAI() {}
 
-bool PlayerbotWarlockAI::DoFirstCombatManeuver(Unit *pTarget)
+CombatManeuverReturns PlayerbotWarlockAI::DoFirstCombatManeuver(Unit* /*pTarget*/)
 {
-    return false;
+    return RETURN_NO_ACTION_OK;
 }
 
-bool PlayerbotWarlockAI::DoNextCombatManeuver(Unit *pTarget)
+CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuver(Unit *pTarget)
 {
-    if (!m_ai)  return false;
-    if (!m_bot) return false;
+    if (!m_ai)  return RETURN_NO_ACTION_ERROR;
+    if (!m_bot) return RETURN_NO_ACTION_ERROR;
 
-    Unit* pVictim = pTarget->getVictim();
+    //Unit* pVictim = pTarget->getVictim();
     float dist = m_bot->GetCombatDistance(pTarget);
     Pet *pet = m_bot->GetPet();
     uint32 spec = m_bot->GetSpec();
@@ -118,11 +118,9 @@ bool PlayerbotWarlockAI::DoNextCombatManeuver(Unit *pTarget)
     //switch (m_ai->GetScenarioType())
     //{
     //    case PlayerbotAI::SCENARIO_DUEL:
-    //    {
     //        if (SHADOW_BOLT > 0)
     //            m_ai->CastSpell(SHADOW_BOLT);
     //        return;
-    //    }
     //    default:
     //        break;
     //}
@@ -159,7 +157,7 @@ bool PlayerbotWarlockAI::DoNextCombatManeuver(Unit *pTarget)
     {
         if (SOULSHATTER > 0 && shardCount > 0 && !m_bot->HasSpellCooldown(SOULSHATTER))
             if (CastSpell(SOULSHATTER, m_bot))
-                return true;
+                return RETURN_CONTINUE;
 
         // Have threat, can't quickly lower it. 3 options remain: Stop attacking, lowlevel damage (wand), keep on keeping on.
         if (newTarget->GetHealthPercent() > 25)
@@ -171,8 +169,7 @@ bool PlayerbotWarlockAI::DoNextCombatManeuver(Unit *pTarget)
 
             // Not an elite. You could insert FEAR here but in any PvE situation that's 90-95% likely
             // to worsen the situation for the group. ... So please don't.
-            CastSpell(SHOOT, pTarget);
-            return true;
+            return CastSpell(SHOOT, pTarget);
         }
     }
 
@@ -300,10 +297,10 @@ bool PlayerbotWarlockAI::DoNextCombatManeuver(Unit *pTarget)
     if (m_ai->GetManaPercent() > 20)
     {
         m_ai->TellMaster("Couldn't find an appropriate spell.");
-        return false;
+        return RETURN_NO_ACTION_UNKNOWN;
     }
 
-    return false;
+    return RETURN_NO_ACTION_UNKNOWN;
 } // end DoNextCombatManeuver
 
 void PlayerbotWarlockAI::CheckDemon()
@@ -371,7 +368,7 @@ void PlayerbotWarlockAI::DoNonCombatActions()
     if (!m_ai)  return;
     if (!m_bot) return;
 
-    uint32 spec = m_bot->GetSpec();
+    //uint32 spec = m_bot->GetSpec();
     Pet *pet = m_bot->GetPet();
 
     // Initialize pet spells

@@ -137,15 +137,16 @@ public:
     virtual ~PlayerbotShamanAI();
 
     // all combat actions go here
-    bool DoFirstCombatManeuver(Unit*);
-    bool DoNextCombatManeuver(Unit*);
+    CombatManeuverReturns DoFirstCombatManeuver(Unit*);
+    CombatManeuverReturns DoNextCombatManeuver(Unit*);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
 
 private:
     // Heals the target based off its hps
-    void HealTarget (Unit& target, uint8 hp);
+    CombatManeuverReturns HealTarget(Unit* target);
+    Unit* GetHealTarget() { return PlayerbotClassAI::GetHealTarget(); }
     void DropTotems();
     void CheckShields();
     void UseCooldowns();

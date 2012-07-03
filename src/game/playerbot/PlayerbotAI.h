@@ -1485,6 +1485,16 @@ enum NotableItems
     ELEMENTAL_SEAFORIUM_CHARGE = 23819
 };
 
+enum CombatManeuverReturns
+{
+    RETURN_NO_ACTION_OK              = 0x01, // No action taken during this combat maneuver, as intended (just wait, etc...)
+    RETURN_NO_ACTION_UNKNOWN         = 0x02, // No action taken during this combat maneuver, unknown reason
+    RETURN_NO_ACTION_ERROR           = 0x04, // No action taken due to error
+    RETURN_NO_ACTION_INVALIDTARGET   = 0x08, // No action taken - invalid target
+    RETURN_FINISHED_FIRST_MOVES      = 0x10, // Last action of first-combat-maneuver finished, continue onto next-combat-maneuver
+    RETURN_CONTINUE                  = 0x20  // Continue first moves; normal return value for next-combat-maneuver
+};
+
 class MANGOS_DLL_SPEC PlayerbotAI
 {
 public:
@@ -1738,6 +1748,7 @@ public:
 
     // get current casting spell (will return NULL if no spell!)
     Spell* GetCurrentSpell() const;
+    uint32 GetCurrentSpellId() { return m_CurrentlyCastingSpellId; }
 
     bool HasAura(uint32 spellId, const Unit& player) const;
     bool HasAura(const char* spellName, const Unit& player) const;
@@ -1818,8 +1829,8 @@ public:
     float gTempDist2;
     uint8 FollowAutoGo;
     uint8 IsUpOrDown; //tracks variable follow distance
+    void CombatDelayRestore();
     void CombatOrderRestore();
-    void CombatOrderRestore(uint8 Prim, uint8 Sec);
     void _HandleCommandAutoEquip(std::string &text, Player &fromPlayer);
     void AutoUpgradeEquipment(Player& player);
     void FollowAutoReset(Player& player);
