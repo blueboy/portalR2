@@ -76,7 +76,7 @@ public:
 };
 
 PlayerbotAI::PlayerbotAI(PlayerbotMgr* const mgr, Player* const bot) :
-m_mgr(mgr), m_bot(bot), m_classAI(0), m_ignoreAIUpdatesUntilTime(0),
+m_mgr(mgr), m_bot(bot), m_classAI(0), m_ignoreAIUpdatesUntilTime(CurrentTime()),
 m_combatOrder(ORDERS_NONE), m_ScenarioType(SCENARIO_PVEEASY),
 m_TimeDoneEating(0), m_TimeDoneDrinking(0),
 m_CurrentlyCastingSpellId(0), m_spellIdCommand(0),
@@ -121,7 +121,7 @@ m_taxiMaster(ObjectGuid())
     gTempDist2 = 1.0f;
     SetMovementOrder(MOVEMENT_FOLLOW, GetMaster());
     CombatDelayRestore();
-    m_DelayAttackInit = time(NULL);
+    m_DelayAttackInit = CurrentTime();
 
     // get class specific ai
     switch (m_bot->getClass())
@@ -1519,7 +1519,7 @@ void PlayerbotAI::SendOrders(Player& /*player*/)
         else if (m_movementOrder == MOVEMENT_STAY)
             out << "STAY";
         out << ". Got " << m_attackerInfo.size() << " attacker(s) in list.";
-        out << " Next action in " << (m_ignoreAIUpdatesUntilTime - time(NULL)) << "sec.";
+        out << " Next action in " << m_ignoreAIUpdatesUntilTime - CurrentTime() << "sec.";
     }
 
     TellMaster(out.str().c_str());
@@ -1538,7 +1538,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
         }
     case SMSG_DUEL_COMPLETE:
         {
-            m_ignoreAIUpdatesUntilTime = time(NULL) + 4;
+            SetIgnoreUpdateTime(4);
             m_ScenarioType = SCENARIO_PVEEASY;
             ReloadAI();
             m_bot->GetMotionMaster()->Clear(true);
@@ -1551,7 +1551,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
         }
     case SMSG_DUEL_REQUESTED:
         {
-            m_ignoreAIUpdatesUntilTime = 0;
+            SetIgnoreUpdateTime(0);
             WorldPacket p(packet);
             ObjectGuid flagGuid;
             p >> flagGuid;
@@ -1573,7 +1573,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                 m_bot->GetMotionMaster()->MoveFollow(pPlayer, dist, angle);
 
                 m_bot->SetSelectionGuid(ObjectGuid(playerGuid));
-                m_ignoreAIUpdatesUntilTime = time(NULL) + 4;
+                SetIgnoreUpdateTime(4);
                 m_ScenarioType = SCENARIO_DUEL;
             }
             return;
@@ -1893,7 +1893,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
             p >> castCount >> spellId;
             if (m_CurrentlyCastingSpellId == spellId)
             {
-                m_ignoreAIUpdatesUntilTime = time(NULL);
+                SetIgnoreUpdateTime(0);
                 m_CurrentlyCastingSpellId = 0;
             }
             return;
@@ -2219,7 +2219,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
             if (pSpellInfo->AuraInterruptFlags & AURA_INTERRUPT_FLAG_NOT_SEATED)
                 return;
 
-            m_ignoreAIUpdatesUntilTime = time(NULL) + (msTime / 1000) + 1;
+            SetIgnoreUpdateTime((msTime / 1000) + 1);
 
             return;
         }
@@ -2831,32 +2831,31 @@ void PlayerbotAI::Feast()
     }
 
     // wait 3 seconds before checking if we need to drink more or eat more
-    time_t currentTime = time(NULL);
-    m_ignoreAIUpdatesUntilTime = currentTime + 3;
+    SetIgnoreUpdateTime(3);
 
     // should we drink another
-    if (m_bot->getPowerType() == POWER_MANA && currentTime > m_TimeDoneDrinking
+    if (m_bot->getPowerType() == POWER_MANA && CurrentTime() > m_TimeDoneDrinking
         && ((static_cast<float> (m_bot->GetPower(POWER_MANA)) / m_bot->GetMaxPower(POWER_MANA)) < 0.8))
     {
         Item* pItem = FindDrink();
         if (pItem != NULL)
         {
             UseItem(pItem);
-            m_TimeDoneDrinking = currentTime + 30;
+            m_TimeDoneDrinking = CurrentTime() + 30;
             return;
         }
         TellMaster("I need water.");
     }
 
     // should we eat another
-    if (currentTime > m_TimeDoneEating && ((static_cast<float> (m_bot->GetHealth()) / m_bot->GetMaxHealth()) < 0.8))
+    if (CurrentTime() > m_TimeDoneEating && ((static_cast<float> (m_bot->GetHealth()) / m_bot->GetMaxHealth()) < 0.8))
     {
         Item* pItem = FindFood();
         if (pItem != NULL)
         {
             //TellMaster("eating now...");
             UseItem(pItem);
-            m_TimeDoneEating = currentTime + 30;
+            m_TimeDoneEating = CurrentTime() + 30;
             return;
         }
         TellMaster("I need food.");
@@ -2864,7 +2863,7 @@ void PlayerbotAI::Feast()
 
     // if we are no longer eating or drinking
     // because we are out of items or we are above 80% in both stats
-    if (currentTime > m_TimeDoneEating && currentTime > m_TimeDoneDrinking)
+    if (CurrentTime() > m_TimeDoneEating && CurrentTime() > m_TimeDoneDrinking)
     {
         TellMaster("done feasting!");
         m_bot->SetStandState(UNIT_STAND_STATE_STAND);
@@ -2883,7 +2882,7 @@ void PlayerbotAI::GetCombatTarget(Unit* forcedTarget)
         // using this caused bot to remove current loot target, and add this new threat to the loot list.  Now it remembers the loot target and adds a new one.
         // Bot will still clear the target if the master gets too far away from it.
         m_targetCombat = 0;
-        m_DelayAttackInit = time(NULL); // Combat started, new start time to check CombatDelay for.
+        m_DelayAttackInit = CurrentTime(); // Combat started, new start time to check CombatDelay for.
     }
 
     // update attacker info now
@@ -4056,7 +4055,7 @@ void PlayerbotAI::SetCombatOrder(CombatOrderType co, Unit *target)
         TellMaster("Orders are cleaned!");
         gPrimOrder = 0;
         gSecOrder = 0;
-        m_DelayAttackInit = time(NULL);
+        m_DelayAttackInit = CurrentTime();
         m_DelayAttack = 0;
         CharacterDatabase.PExecute("DELETE FROM playerbot_saved_data WHERE guid = '%u'", m_bot->GetGUIDLow());
         return;
@@ -4202,7 +4201,7 @@ void PlayerbotAI::MovementReset()
                 {
                     gDist[0] = 0.5f;
                     gDist[1] = 1.0f;
-                    m_ignoreAIUpdatesUntilTime = time(NULL) + 3;
+                    SetIgnoreUpdateTime(3);
                     FollowAutoGo = 1;
                 }
             }
@@ -4367,8 +4366,7 @@ void PlayerbotAI::UpdateAI(const uint32 /*p_time*/)
     if (m_bot->IsBeingTeleported() || m_bot->GetTrader())
         return;
 
-    time_t currentTime = time(NULL);
-    if (currentTime < m_ignoreAIUpdatesUntilTime)
+    if (CurrentTime() < m_ignoreAIUpdatesUntilTime)
         return;
 
     // default updates occur every two seconds
@@ -4421,10 +4419,10 @@ void PlayerbotAI::UpdateAI(const uint32 /*p_time*/)
             // DEBUG_LOG ("[PlayerbotAI]: UpdateAI - Teleport %s to corpse...", m_bot->GetName() );
             DoTeleport(*corpse);
             // check if we are allowed to resurrect now
-            if ((corpse->GetGhostTime() + m_bot->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP)) > time(NULL))
+            if ((corpse->GetGhostTime() + m_bot->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP)) > CurrentTime())
             {
                SetIgnoreUpdateTime( corpse->GetGhostTime() + m_bot->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP) );
-                // DEBUG_LOG ("[PlayerbotAI]: UpdateAI - %s has to wait for %d seconds to revive...", m_bot->GetName(), m_ignoreAIUpdatesUntilTime-time(NULL) );
+                // DEBUG_LOG ("[PlayerbotAI]: UpdateAI - %s has to wait for %d seconds to revive...", m_bot->GetName(), m_ignoreAIUpdatesUntilTime-CurrentTime());
                 return;
             }
             // resurrect now
@@ -4580,7 +4578,8 @@ void PlayerbotAI::UpdateAI(const uint32 /*p_time*/)
         {
             if (!pSpell || !pSpell->IsChannelActive())
             {
-                if (m_DelayAttackInit + m_DelayAttack > time(NULL))
+                // DEBUG_LOG("m_DelayAttackInit (%li)+ m_DelayAttack (%u) > time(%li)", m_DelayAttackInit, m_DelayAttack, CurrentTime());
+                if (m_DelayAttackInit + m_DelayAttack > CurrentTime())
                     return SetIgnoreUpdateTime(1); // short bursts of delay
 
                 return DoNextCombatManeuver();
@@ -4837,7 +4836,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId)
             m_bot->CastSpell(pTarget, pSpellInfo, false);      // uni-cast spell
     }
 
-    m_ignoreAIUpdatesUntilTime = time(NULL) + CastTime + 1;
+    SetIgnoreUpdateTime(CastTime + 1);
 
     return true;
 }
@@ -7031,7 +7030,7 @@ bool PlayerbotAI::DoTeleport(WorldObject& /*obj*/)
     if (GetMaster()->InArena())
         return false;
 
-    m_ignoreAIUpdatesUntilTime = time(NULL) + 6;
+    SetIgnoreUpdateTime(6);
     PlayerbotChatHandler ch(GetMaster());
     if (!ch.teleport(*m_bot))
     {
@@ -7044,14 +7043,14 @@ bool PlayerbotAI::DoTeleport(WorldObject& /*obj*/)
 
 void PlayerbotAI::HandleTeleportAck()
 {
-    m_ignoreAIUpdatesUntilTime = time(NULL) + 6;
+    SetIgnoreUpdateTime(6);
     m_bot->GetMotionMaster()->Clear(true);
     if (m_bot->IsBeingTeleportedNear())
     {
         WorldPacket p = WorldPacket(MSG_MOVE_TELEPORT_ACK, 8 + 4 + 4);
         p.appendPackGUID(m_bot->GetObjectGuid());
         p << (uint32) 0; // supposed to be flags? not used currently
-        p << (uint32) time(NULL); // time - not currently used
+        p << (uint32) CurrentTime(); // time - not currently used
         m_bot->GetSession()->HandleMoveTeleportAckOpcode(p);
     }
     else if (m_bot->IsBeingTeleportedFar())
@@ -7571,13 +7570,11 @@ void PlayerbotAI::ListAuctions()
             uint32 bidder = fields[4].GetUInt32();
             uint32 bid = fields[5].GetUInt32();
 
-            // current time
-            time_t currtime = time(NULL);
-            time_t remtime = expireTime - currtime;
+            time_t remtime = expireTime - CurrentTime();
 
             tm* aTm = gmtime(&remtime);
 
-            if (expireTime > currtime)
+            if (expireTime > CurrentTime())
             {
                 Item* aItem = sAuctionMgr.GetAItem(itemGuidLow);
                 if (aItem)
@@ -7618,7 +7615,7 @@ void PlayerbotAI::AddAuction(const uint32 itemid, Creature* aCreature)
     if (aItem)
     {
         std::ostringstream out;
-        srand(time(NULL));
+        srand(CurrentTime());
         uint32 duration[3] = { 720, 1440, 2880 };  // 720 = 12hrs, 1440 = 24hrs, 2880 = 48hrs
         uint32 etime = duration[rand() % 3];
 
@@ -8629,7 +8626,7 @@ void PlayerbotAI::_HandleCommandMail(std::string &text, Player &fromPlayer)
         for (std::list<uint32>::iterator it = mailIds.begin(); it != mailIds.end(); ++it)
         {
             Mail* m = m_bot->GetMail(*it);
-            if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > time(NULL))
+            if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > CurrentTime())
             {
                 m_bot->SendMailResult(*it, MAIL_MONEY_TAKEN, MAIL_ERR_INTERNAL_ERROR);
                 return;
@@ -8663,7 +8660,7 @@ void PlayerbotAI::_HandleCommandMail(std::string &text, Player &fromPlayer)
         for (std::list<uint32>::iterator it = mailIds.begin(); it != mailIds.end(); it++)
         {
             Mail* m = m_bot->GetMail(*it);
-            if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > time(NULL))
+            if (!m || m->state == MAIL_STATE_DELETED || m->deliver_time > CurrentTime())
             {
                 m_bot->SendMailResult(*it, MAIL_ITEM_TAKEN, MAIL_ERR_INTERNAL_ERROR);
                 return;
