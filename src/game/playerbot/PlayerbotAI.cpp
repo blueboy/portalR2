@@ -1740,6 +1740,10 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                     return;
                 case EQUIP_ERR_INVENTORY_FULL:
                     {
+                        if (m_lootCurrent.IsGameObject())
+                            if (GameObject* go = m_bot->GetMap()->GetGameObject(m_lootCurrent))
+                                m_collectObjects.remove(go->GetEntry());
+
                         if (m_inventory_full)
                             return;
 
@@ -6586,7 +6590,12 @@ void PlayerbotAI::findNearbyGO()
         for (std::list<GameObject*>::iterator iter = tempTargetGOList.begin(); iter != tempTargetGOList.end(); iter++)
         {
             GameObject* go = (*iter);
-            if (go->isSpawned())
+
+            TerrainInfo const *map = go->GetTerrain();
+
+            float ground_z = map->GetHeight(go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+            DEBUG_LOG("ground_z (%f) > INVALID_HEIGHT (%f)",ground_z,INVALID_HEIGHT);
+            if ((ground_z > INVALID_HEIGHT) && go->isSpawned())
                 m_lootTargets.push_back(go->GetObjectGuid());
         }
     }
