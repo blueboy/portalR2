@@ -106,7 +106,7 @@ CombatManeuverReturns PlayerbotDruidAI::DoFirstCombatManeuver(Unit* /*pTarget*/)
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotDruidAI::HealTarget(Unit* target)
+CombatManeuverReturns PlayerbotDruidAI::HealPlayer(Player* target)
 {
     if (!m_ai)  return RETURN_NO_ACTION_ERROR;
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
@@ -234,7 +234,7 @@ CombatManeuverReturns PlayerbotDruidAI::DoNextCombatManeuver(Unit *pTarget)
     Unit *newTarget = m_ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE) (PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
     if (newTarget) // TODO: && party has a tank
     {
-        if (HealTarget(m_bot) == RETURN_CONTINUE)
+        if (HealPlayer(m_bot) == RETURN_CONTINUE)
             return RETURN_CONTINUE;
 
         // TODO: Heal tank
@@ -496,7 +496,7 @@ CombatManeuverReturns PlayerbotDruidAI::_DoNextPVECombatManeuverHeal()
         return RETURN_CONTINUE;
     }
 
-    if (HealTarget(GetHealTarget()) & (RETURN_NO_ACTION_OK | RETURN_CONTINUE))
+    if (HealPlayer(GetHealTarget()) & (RETURN_NO_ACTION_OK | RETURN_CONTINUE))
         return RETURN_CONTINUE;
 
     return RETURN_NO_ACTION_UNKNOWN;
@@ -652,7 +652,7 @@ void PlayerbotDruidAI::DoNonCombatActions()
             return;
     }
 
-    if (HealTarget(GetHealTarget()) & (RETURN_NO_ACTION_OK | RETURN_CONTINUE))
+    if (HealPlayer(GetHealTarget()) & RETURN_CONTINUE)
         return;
 
     BuffPlayer(m_bot);
