@@ -516,7 +516,7 @@ void PlayerbotAI::FollowAutoReset(Player& /*player*/)
     }
 }
 
-void PlayerbotAI::AutoUpgradeEquipment(Player& /*player*/) // test for autoequip
+void PlayerbotAI::AutoUpgradeEquipment() // test for autoequip
 {
     ChatHandler ch(GetMaster());
     std::ostringstream out;
@@ -2105,8 +2105,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
             {
                 m_bot->GetSession()->HandleAcceptTradeOpcode(p);  // packet not used
                 SetQuestNeedItems();
-                Player* const bot = GetPlayerBot();
-                AutoUpgradeEquipment(*bot);
+                AutoUpgradeEquipment();
             }
 
             //1 == TRADE_STATUS_BEGIN_TRADE
@@ -2427,8 +2426,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                         out << "|cff009900" << "I received: |r";
                     MakeItemLink(pProto, out);
                     TellMaster(out.str().c_str());
-                    Player* const bot = GetPlayerBot();
-                    AutoUpgradeEquipment(*bot);
+                    AutoUpgradeEquipment();
                 }
             }
 
@@ -3238,8 +3236,7 @@ void PlayerbotAI::DoLoot()
         SetState(BOTSTATE_NORMAL);
         m_bot->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_LOOTING);
         m_inventory_full = false;
-        Player* const bot = GetPlayerBot();
-        AutoUpgradeEquipment(*bot);
+        AutoUpgradeEquipment();
         return;
     }
 
@@ -3698,8 +3695,7 @@ void PlayerbotAI::TurnInQuests(WorldObject *questgiver)
             if (!out.str().empty())
                 TellMaster(out.str());
         }
-        Player* const bot = GetPlayerBot();
-        AutoUpgradeEquipment(*bot);
+        AutoUpgradeEquipment();
     }
 }
 
@@ -9180,24 +9176,23 @@ void PlayerbotAI::_HandleCommandUse(std::string &text, Player &fromPlayer)
 void PlayerbotAI::_HandleCommandAutoEquip(std::string &text, Player &fromPlayer)
 {
     std::ostringstream msg;
-    if (ExtractCommand("now", text, true)) // run autoequip cycle right now
+    if (ExtractCommand("now", text)) // run autoequip cycle right now
     {
         msg << "Running Auto Equip cycle One time. My current setting is" << (AutoEquipPlug ? "ON" : "OFF");
         SendWhisper(msg.str(),fromPlayer);
         if (AutoEquipPlug == 0)
             AutoEquipPlug = 2;
-        Player* const bot = GetPlayerBot();
-        AutoUpgradeEquipment(*bot);
+        AutoUpgradeEquipment();
         return;
     }
-    else if (ExtractCommand("on", text, true)) // true -> "autoequip on"
+    else if (ExtractCommand("on", text)) // true -> "autoequip on"
     {
         AutoEquipPlug = 1;
         msg << "AutoEquip is now ON";
         SendWhisper(msg.str(),fromPlayer);
         return;
     }
-    else if (ExtractCommand("off", text, true)) // true -> "autoequip off"
+    else if (ExtractCommand("off", text)) // true -> "autoequip off"
     {
         AutoEquipPlug = 0;
         msg << "AutoEquip is now OFF";
@@ -9212,8 +9207,33 @@ void PlayerbotAI::_HandleCommandAutoEquip(std::string &text, Player &fromPlayer)
     SendWhisper(msg.str(),fromPlayer);
 }
 
-void PlayerbotAI::_HandleCommandEquip(std::string &text, Player& /*fromPlayer*/)
+void PlayerbotAI::_HandleCommandEquip(std::string &text, Player& fromPlayer)
 {
+    if (ExtractCommand("auto", text))
+    {
+        std::ostringstream msg;
+        // run autoequip cycle once - right now - turning off after
+        if (ExtractCommand("once", text))
+        {
+            msg << "Running Auto Equip cycle now" << (AutoEquipPlug ? ", then switching it off." : ".");
+            SendWhisper(msg.str(), fromPlayer);
+            AutoUpgradeEquipment();
+            return;
+        }
+
+        if (ExtractCommand("on", text))
+            AutoEquipPlug = AUTOEQUIP_ON;
+        else if (ExtractCommand("off", text))
+            AutoEquipPlug = AUTOEQUIP_OFF;
+
+        // subcommand not found, assume toggle
+        AutoEquipPlug = AutoEquipPlug ? AUTOEQUIP_OFF : AUTOEQUIP_ON;
+
+        msg << "AutoEquip is " << (AutoEquipPlug ? "ON" : "OFF");
+        SendWhisper(msg.str(),fromPlayer);
+        return;
+    }
+
     std::list<uint32> itemIds;
     std::list<Item*> itemList;
     extractItemIds(text, itemIds);
