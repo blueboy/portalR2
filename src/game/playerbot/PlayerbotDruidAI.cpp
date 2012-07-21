@@ -55,6 +55,7 @@ PlayerbotDruidAI::PlayerbotDruidAI(Player* const master, Player* const bot, Play
     SWIFTMEND                     = m_ai->initSpell(SWIFTMEND_1);
     TRANQUILITY                   = m_ai->initSpell(TRANQUILITY_1);
     REVIVE                        = m_ai->initSpell(REVIVE_1);
+    REBIRTH                       = m_ai->initSpell(REBIRTH_1);
     REMOVE_CURSE                  = m_ai->initSpell(REMOVE_CURSE_DRUID_1);
     ABOLISH_POISON                = m_ai->initSpell(ABOLISH_POISON_1);
     // Druid Forms
@@ -112,8 +113,31 @@ CombatManeuverReturns PlayerbotDruidAI::HealPlayer(Player* target)
     if (r != RETURN_NO_ACTION_OK)
         return r;
 
-    // TODO: find some clever way to integrate Revive/Resurrection instead
-    if (!target->isAlive()) return RETURN_NO_ACTION_INVALIDTARGET;
+    if (!target->isAlive())
+    {
+        if (m_bot->isInCombat())
+        {
+            // TODO: Add check for cooldown
+            if (REBIRTH && m_ai->CastSpell(REBIRTH, *target))
+            {
+                std::string msg = "Resurrecting ";
+                msg += target->GetName();
+                m_bot->Say(msg, LANG_UNIVERSAL);
+                return RETURN_CONTINUE;
+            }
+        }
+        else
+        {
+            if (REVIVE && m_ai->CastSpell(REVIVE, *target))
+            {
+                std::string msg = "Resurrecting ";
+                msg += target->GetName();
+                m_bot->Say(msg, LANG_UNIVERSAL);
+                return RETURN_CONTINUE;
+            }
+        }
+        return RETURN_NO_ACTION_ERROR; // not error per se - possibly just OOM
+    }
 
     //If spell exists and orders say we should be dispelling
     if ((REMOVE_CURSE > 0 || ABOLISH_POISON > 0) && (m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_NODISPEL) == 0)
@@ -600,7 +624,24 @@ void PlayerbotDruidAI::DoNonCombatActions()
 
     if (!m_bot->isAlive() || m_bot->IsInDuel()) return;
 
-    // TODO: proper order: revive, heal, buff
+    // Revive
+    if (HealPlayer(GetResurrectionTarget()) & RETURN_CONTINUE)
+        return;
+
+    // Heal
+    if (m_ai->IsHealer())
+    {
+        if (HealPlayer(GetHealTarget()) & RETURN_CONTINUE)
+            return;// RETURN_CONTINUE;
+    }
+    else
+    {
+        // Is this desirable? Debatable.
+        // TODO: In a group/raid with a healer you'd want this bot to focus on DPS (it's not specced/geared for healing either)
+        if (HealPlayer(m_bot) & RETURN_CONTINUE)
+            return;// RETURN_CONTINUE;
+    }
+
     // buff and heal group
     if (m_bot->GetGroup())
     {
@@ -615,22 +656,8 @@ void PlayerbotDruidAI::DoNonCombatActions()
             if (!tPlayer || tPlayer->IsInDuel() || tPlayer == m_bot)
                 continue;
 
-            // Resurrect member if needed
-            if (!tPlayer->isAlive())
+            if (tPlayer->isAlive())
             {
-                if (REVIVE > 0 && CastSpell(REVIVE, tPlayer))
-                {
-                    std::string msg = "Resurrecting ";
-                    msg += tPlayer->GetName();
-                    m_bot->Say(msg, LANG_UNIVERSAL);
-                    return;
-                }
-                else
-                    continue;
-            }
-            else
-            {
-                // buff
                 if (BuffPlayer(tPlayer))
                     return;
             }
@@ -638,21 +665,12 @@ void PlayerbotDruidAI::DoNonCombatActions()
     }
     else
     {
-        if (m_master->IsInDuel())
+        if (m_master->IsInDuel() || !m_master->isAlive())
             return;
-        if (!m_master->isAlive())
-        {
-            if (REVIVE > 0 && CastSpell(REVIVE, m_master))
-                m_ai->TellMaster("Resurrecting you, Master.");
-            return;
-        }
 
         if (BuffPlayer(m_master))
             return;
     }
-
-    if (HealPlayer(GetHealTarget()) & RETURN_CONTINUE)
-        return;
 
     BuffPlayer(m_bot);
 
