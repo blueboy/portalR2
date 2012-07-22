@@ -9128,8 +9128,7 @@ void PlayerbotAI::_HandleCommandEquip(std::string &text, Player& fromPlayer)
             m_AutoEquipToggle = false;
             return;
         }
-
-        if (ExtractCommand("on", text))
+        else if (ExtractCommand("on", text))
             m_AutoEquipToggle = true;
         else if (ExtractCommand("off", text))
             m_AutoEquipToggle = false;
@@ -9137,10 +9136,10 @@ void PlayerbotAI::_HandleCommandEquip(std::string &text, Player& fromPlayer)
             m_AutoEquipToggle = !m_AutoEquipToggle;
 
         if (m_AutoEquipToggle)
+        {
             AutoUpgradeEquipment();
-
-        if (m_AutoEquipToggle)
             SendWhisper("Auto Equip has run and is on.", fromPlayer);
+        }
         else
             SendWhisper("Auto Equip is off.", fromPlayer);
         return;
