@@ -2066,6 +2066,8 @@ private:
     SpellRanges m_spellRangeMap;
 
     float m_destX, m_destY, m_destZ; // latest coordinates for chase and point movement types
+
+    bool m_bDebugCommandChat;
 };
 
 #endif
