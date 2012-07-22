@@ -23,14 +23,6 @@
 
 #include "PlayerbotClassAI.h"
 
-enum
-{
-    DruidCombat,
-    DruidTank,
-    DruidHeal,
-    DruidSpell
-};
-
 enum DruidSpells
 {
     ABOLISH_POISON_1                = 2893,
@@ -129,9 +121,6 @@ public:
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
 
-    // buff a specific player, usually a real PC who is not in group
-    bool BuffPlayer(Player *target);
-
 private:
     CombatManeuverReturns CastSpell(uint32 nextAction, Unit *pTarget = NULL) { return CastSpellNoRanged(nextAction, pTarget); }
 
@@ -145,6 +134,7 @@ private:
     CombatManeuverReturns HealPlayer (Player* target);
     Player* GetHealTarget() { return PlayerbotClassAI::GetHealTarget(); }
 
+    static bool BuffHelper(PlayerbotAI* ai, uint32 spellId, Unit *target);
     // Callback method to reset shapeshift forms blocking buffs and heals
     static void GoBuffForm(Player *self);
     // Has the ability to change to animal form
