@@ -1841,7 +1841,7 @@ public:
     float gTempDist2;
     uint8 FollowAutoGo;
     uint8 IsUpOrDown; //tracks variable follow distance
-    void CombatDelayRestore();
+    void BotDataRestore();
     void CombatOrderRestore();
     void AutoUpgradeEquipment();
     void FollowAutoReset(Player& player);

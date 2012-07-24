@@ -124,7 +124,7 @@ m_bDebugCommandChat(false)
     gTempDist = 0.5f;
     gTempDist2 = 1.0f;
     SetMovementOrder(MOVEMENT_FOLLOW, GetMaster());
-    CombatDelayRestore();
+    BotDataRestore();
     m_DelayAttackInit = CurrentTime();
 
     // get class specific ai
@@ -3856,18 +3856,19 @@ Unit* PlayerbotAI::FindAttacker(ATTACKERINFOTYPE ait, Unit *victim)
 }
 
 /**
-* CombatDelayRestore()
-* Restores only gDelayAttack - the other attributes need a valid target. This function is to be called when the targets
+* BotDataRestore()
+* Restores autoequip - the toggle status for the 'equip auto' command.
+* Restores gDelayAttack - the other attributes need a valid target. This function is to be called when the targets
 * may or may not be online (such as upon login). See CombatOrderRestore() for full orders restore.
 */
-void PlayerbotAI::CombatDelayRestore()
+void PlayerbotAI::BotDataRestore()
 {
-    QueryResult* result = CharacterDatabase.PQuery("SELECT combat_delay FROM playerbot_saved_data WHERE guid = '%u'", m_bot->GetGUIDLow());
+    QueryResult* result = CharacterDatabase.PQuery("SELECT combat_delay,autoequip FROM playerbot_saved_data WHERE guid = '%u'", m_bot->GetGUIDLow());
 
     if (!result)
     {
         sLog.outString();
-        sLog.outString(">> [CombatDelayRestore()] Loaded `playerbot_saved_data`, found no match for guid %u.", m_bot->GetGUIDLow());
+        sLog.outString(">> [BotDataRestore()] Loaded `playerbot_saved_data`, found no match for guid %u.", m_bot->GetGUIDLow());
         m_DelayAttack = 0;
         return;
     }
@@ -3875,6 +3876,7 @@ void PlayerbotAI::CombatDelayRestore()
     {
         Field* fields = result->Fetch();
         m_DelayAttack = fields[0].GetUInt8();
+        m_AutoEquipToggle = fields[1].GetBool();
         delete result;
     }
 }
@@ -9134,13 +9136,20 @@ void PlayerbotAI::_HandleCommandEquip(std::string &text, Player& fromPlayer)
         else // subcommand not found, assume toggle
             m_AutoEquipToggle = !m_AutoEquipToggle;
 
+        CharacterDatabase.DirectPExecute("UPDATE playerbot_saved_data SET autoequip = '%u' WHERE guid = '%u'", m_AutoEquipToggle, m_bot->GetGUIDLow());
+
         if (m_AutoEquipToggle)
         {
             AutoUpgradeEquipment();
-            SendWhisper("Auto Equip has run and is on.", fromPlayer);
+            SendWhisper("Auto Equip has run and is |h|cff1eff00ON|h|r", fromPlayer);
         }
         else
-            SendWhisper("Auto Equip is off.", fromPlayer);
+            SendWhisper("Auto Equip is |h|cffff0000OFF|h|r", fromPlayer);
+        return;
+    }
+    else if (ExtractCommand("info", text))
+    {
+        m_AutoEquipToggle ?  SendWhisper("Auto Equip is |h|cff1eff00ON|h|r", fromPlayer) : SendWhisper("Auto Equip is |h|cffff0000OFF|h|r", fromPlayer);
         return;
     }
 
@@ -10625,6 +10634,7 @@ void PlayerbotAI::_HandleCommandHelp(std::string &text, Player &fromPlayer)
     if (bMainHelp || ExtractCommand("equip", text))
     {
         ch.SendSysMessage(_HandleCommandHelpHelper("equip auto", "I will automatically equip items I acquire if they are better than what I'm wearing. Acts as toggle (ON/OFF) if used without subcommand. Fashion sense not included.", HL_ITEM, true).c_str());
+        ch.SendSysMessage(_HandleCommandHelpHelper("equip info", "I will tell you my equip auto toggle status (ON/OFF).").c_str());
         ch.SendSysMessage(_HandleCommandHelpHelper("equip", "I will equip the linked item(s).", HL_ITEM, true).c_str());
 
         if (!bMainHelp || ExtractCommand("auto", text))
