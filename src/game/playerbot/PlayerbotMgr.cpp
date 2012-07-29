@@ -333,7 +333,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 Group* group = bot->GetGroup();
                 if (!group)
                     continue;
-                bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+
                 Unit *target = ObjectAccessor::GetUnit(*bot, guid);
 
                 bot->GetPlayerbotAI()->SetIgnoreUpdateTime(delay);
@@ -375,7 +375,6 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 Player* const bot = it->second;
                 if (!bot)
                     return;
-                bot->GetPlayerbotAI()->FollowAutoReset(*bot);
                 Group* group = bot->GetGroup();
                 if (!group)
                     continue;
@@ -649,7 +648,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
                 Player* const bot = it->second;
-                bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+                bot->GetPlayerbotAI()->FollowAutoReset();
                 GameObject *obj = m_master->GetMap()->GetGameObject(objGUID);
                 if (!obj)
                     return;
@@ -689,7 +688,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
                 Player* const bot = it->second;
-                bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+                bot->GetPlayerbotAI()->FollowAutoReset();
                 bot->GetPlayerbotAI()->TurnInQuests(pNpc);
             }
 
@@ -713,7 +712,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
                 {
                     Player* const bot = it->second;
-                    bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+                    bot->GetPlayerbotAI()->FollowAutoReset();
                     if (bot->GetQuestStatus(quest) == QUEST_STATUS_COMPLETE)
                         bot->GetPlayerbotAI()->TellMaster("I already completed that quest.");
                     else if (!bot->CanTakeQuest(qInfo, false))
@@ -791,7 +790,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             for (PlayerBotMap::const_iterator it = GetPlayerBotsBegin(); it != GetPlayerBotsEnd(); ++it)
             {
                 Player* const bot = it->second;
-                bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+                bot->GetPlayerbotAI()->FollowAutoReset();
                 bot->GetPlayerbotAI()->TurnInQuests(pNpc);
             }
             return;
@@ -884,7 +883,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 Player* const bot = it->second;
                 if (!bot)
                     continue;
-                bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+                bot->GetPlayerbotAI()->FollowAutoReset();
                 Creature *pCreature = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_NONE);
                 if (!pCreature)
                 {
@@ -988,7 +987,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 else
                 {
                     // changed the SellGarbage() function to support ch.SendSysMessaage()
-                    bot->GetPlayerbotAI()->FollowAutoReset(*bot);
+                    bot->GetPlayerbotAI()->FollowAutoReset();
                     bot->GetPlayerbotAI()->SellGarbage(*bot);
                 }
             }
