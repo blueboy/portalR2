@@ -101,8 +101,8 @@ public:
     virtual ~PlayerbotWarriorAI();
 
     // all combat actions go here
-    CombatManeuverReturns DoFirstCombatManeuver(Unit*);
-    CombatManeuverReturns DoNextCombatManeuver(Unit*);
+    CombatManeuverReturns DoFirstCombatManeuver(Unit* pTarget);
+    CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -111,6 +111,11 @@ public:
     void CheckShouts();
 
 private:
+    CombatManeuverReturns DoFirstCombatManeuverPVE(Unit* pTarget);
+    CombatManeuverReturns DoNextCombatManeuverPVE(Unit* pTarget);
+    CombatManeuverReturns DoFirstCombatManeuverPVP(Unit* pTarget);
+    CombatManeuverReturns DoNextCombatManeuverPVP(Unit* pTarget);
+
     // ARMS
     uint32 BATTLE_STANCE,
            CHARGE,

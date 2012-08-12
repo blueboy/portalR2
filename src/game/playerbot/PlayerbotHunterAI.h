@@ -111,8 +111,8 @@ public:
     bool HasPet(Player* bot);
 
     // all combat actions go here
-    CombatManeuverReturns DoFirstCombatManeuver(Unit*);
-    CombatManeuverReturns DoNextCombatManeuver(Unit*);
+    CombatManeuverReturns DoFirstCombatManeuver(Unit* pTarget);
+    CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
 
     // all non combat actions go here, ex buffs, heals, rezzes
     void DoNonCombatActions();
@@ -121,6 +121,11 @@ public:
     //void BuffPlayer(Player *target);
 
 private:
+    CombatManeuverReturns DoFirstCombatManeuverPVE(Unit* pTarget);
+    CombatManeuverReturns DoNextCombatManeuverPVE(Unit* pTarget);
+    CombatManeuverReturns DoFirstCombatManeuverPVP(Unit* pTarget);
+    CombatManeuverReturns DoNextCombatManeuverPVP(Unit* pTarget);
+
     // Hunter
     bool m_petSummonFailed;
     bool m_rangedCombat;
