@@ -7997,8 +7997,9 @@ void PlayerbotAI::HandleCommand(const std::string& text, Player& fromPlayer)
         _HandleCommandStay(input, fromPlayer);
     else if (ExtractCommand("attack", input))
         _HandleCommandAttack(input, fromPlayer);
-    else if (ExtractCommand("recall", input))
-        _HandleCommandRecall(input, fromPlayer);
+    else if (ExtractCommand("pull", input))
+        _HandleCommandPull(input, fromPlayer);
+
     else if (ExtractCommand("cast", input, true)) // true -> "cast" OR "c"
         _HandleCommandCast(input, fromPlayer);
 
@@ -8408,29 +8409,32 @@ void PlayerbotAI::_HandleCommandAttack(std::string &text, Player &fromPlayer)
     }
 }
 
-void PlayerbotAI::_HandleCommandRecall(std::string &text, Player &fromPlayer)
+void PlayerbotAI::_HandleCommandPull(std::string &text, Player &fromPlayer)
 {
+    if (text != "")
+    {
+        SendWhisper("pull cannot have a subcommand.", fromPlayer);
+        return;
+    }
     ObjectGuid attackOnGuid = fromPlayer.GetSelectionGuid();
     if (attackOnGuid)
     {
         if (Unit * thingToAttack = ObjectAccessor::GetUnit(*m_bot, attackOnGuid))
         {
-            m_bot->SendMeleeAttackStop(thingToAttack);
-            Pet *pet = m_bot->GetPet();
-            if (pet)
-                pet->AttackStop();
-
-            m_bot->SetSelectionGuid(ObjectGuid());
-            m_targetChanged = false;
-            m_targetType = TARGET_NORMAL;
-            SetState(BOTSTATE_NORMAL);
-            MovementReset();
-            m_attackerInfo.clear();
-            UpdateAttackerInfo();
-            m_lootTargets.clear();
-            m_lootCurrent = ObjectGuid();
-            m_targetCombat = 0;
+            if (!m_bot->IsFriendlyTo(thingToAttack) && !m_bot->IsWithinLOSInMap(thingToAttack))
+            {
+                DoTeleport(*m_followTarget);
+                if (m_bot->IsWithinLOSInMap(thingToAttack))
+                    GetCombatTarget(thingToAttack);
+            }
+            else if (!m_bot->IsFriendlyTo(thingToAttack) && m_bot->IsWithinLOSInMap(thingToAttack))
+                GetCombatTarget(thingToAttack);
         }
+    }
+    else
+    {
+        SendWhisper("No target is selected.", fromPlayer);
+        m_bot->HandleEmoteCommand(EMOTE_ONESHOT_TALK);
     }
 }
 
@@ -10558,7 +10562,7 @@ void PlayerbotAI::_HandleCommandHelp(std::string &text, Player &fromPlayer)
     bool bMainHelp = (text == "") ? true : false;
     const std::string sInvalidSubcommand = "That's not a valid subcommand.";
     std::string msg = "";
-    // All of these must containt the 'bMainHelp' clause -> help lists all major commands
+    // All of these must contain the 'bMainHelp' clause -> help lists all major commands
     // Further indented 'ExtractCommand("subcommand")' conditionals make sure these aren't printed for basic "help"
     if (bMainHelp || ExtractCommand("attack", text))
     {
@@ -10570,9 +10574,9 @@ void PlayerbotAI::_HandleCommandHelp(std::string &text, Player &fromPlayer)
             return;
         }
     }
-    if (bMainHelp || ExtractCommand("recall", text))
+    if (bMainHelp || ExtractCommand("pull", text))
     {
-        ch.SendSysMessage(_HandleCommandHelpHelper("recall", "bot(s) stop attacking the selected target and return to master.").c_str());
+        ch.SendSysMessage(_HandleCommandHelpHelper("pull", "Pull the target in a coordinated party/raid manner.", HL_TARGET).c_str());
 
         if (!bMainHelp)
         {
