@@ -48,27 +48,16 @@ bool WorldPvPTF::InitWorldPvPArea()
     return true;
 }
 
-void WorldPvPTF::FillInitialWorldStates(WorldPacket& data, uint32& count)
+void WorldPvPTF::FillInitialWorldStates(uint32 zoneId)
 {
-    FillInitialWorldState(data, count, m_uiControllerWorldState, 1);
     if (m_uiControllerWorldState == WORLD_STATE_TF_TOWERS_CONTROLLED)
     {
-        FillInitialWorldState(data, count, WORLD_STATE_TF_TOWER_COUNT_H, m_uiTowersHorde);
-        FillInitialWorldState(data, count, WORLD_STATE_TF_TOWER_COUNT_A, m_uiTowersAlly);
+        FillInitialWorldState(zoneId, WORLD_STATE_TF_TOWER_COUNT_H, m_uiTowersHorde);
+        FillInitialWorldState(zoneId, WORLD_STATE_TF_TOWER_COUNT_A, m_uiTowersAlly);
     }
     else
         UpdateTimerWorldState();
 
-    for (uint8 i = 0; i < MAX_TF_TOWERS; ++i)
-        FillInitialWorldState(data, count, m_uiTowerWorldState[i], 1);
-}
-
-void WorldPvPTF::SendRemoveWorldStates(Player* pPlayer)
-{
-    pPlayer->SendUpdateWorldState(m_uiControllerWorldState, 0);
-
-    for (uint8 i = 0; i < MAX_TF_TOWERS; ++i)
-        pPlayer->SendUpdateWorldState(m_uiTowerWorldState[i], 0);
 }
 
 void WorldPvPTF::UpdateWorldState(uint8 uiValue)
@@ -125,7 +114,7 @@ void WorldPvPTF::OnGameObjectCreate(GameObject* pGo)
     pGo->SetGoArtKit(GO_ARTKIT_BANNER_NEUTRAL);
 }
 
-void WorldPvPTF::HandleObjectiveComplete(ObjectGuidSet m_sPlayersSet, uint32 uiEventId)
+void WorldPvPTF::HandleObjectiveComplete(GuidSet m_sPlayersSet, uint32 uiEventId)
 {
     for (uint8 i = 0; i < MAX_TF_TOWERS; ++i)
     {
@@ -133,7 +122,7 @@ void WorldPvPTF::HandleObjectiveComplete(ObjectGuidSet m_sPlayersSet, uint32 uiE
         {
             if (uiEventId == aTerokkarTowerEvents[i][j].uiEventEntry)
             {
-                for (ObjectGuidSet::iterator itr = m_sPlayersSet.begin(); itr != m_sPlayersSet.end(); ++itr)
+                for (GuidSet::iterator itr = m_sPlayersSet.begin(); itr != m_sPlayersSet.end(); ++itr)
                 {
                     if (!(*itr))
                         continue;

@@ -764,3 +764,21 @@ INSERT INTO `spell_proc_event` VALUES
 -- (16164) Elemental Focus
 DELETE FROM `spell_proc_event` WHERE `entry` IN (16164);
 INSERT INTO `spell_proc_event` VALUES (16164, 0x1C, 0x0B, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00015550, 0x00000002, 0, 0, 0);
+
+-- Pet
+-- (53178) Guard Dog
+DELETE FROM spell_proc_event WHERE entry IN (53178, 53179);
+INSERT INTO spell_proc_event (entry, SchoolMask, SpellFamilyName, SpellFamilyMaskB0, SpellFamilyMaskB1, SpellFamilyMaskB2, procFlags, procEx, ppmRate, CustomChance, Cooldown) VALUES
+(53178, 0x00, 9, 0x00000000, 0x10000000, 0x00000000, 0x00010000, 0x00000000, 0, 100, 0);
+DELETE FROM `spell_chain` WHERE `first_spell` IN (53178); -- delete this!
+
+-- Pet
+-- (62764) Silverback
+DELETE FROM spell_proc_event WHERE entry IN (62764, 62765);
+INSERT INTO spell_proc_event (entry, SchoolMask, SpellFamilyName, SpellFamilyMaskB0, SpellFamilyMaskB1, SpellFamilyMaskB2, procFlags, procEx, ppmRate, CustomChance, Cooldown) VALUES
+(62764, 0x00, 9, 0x00000000, 0x10000000, 0x00000000, 0x00010000, 0x00000000, 0, 100, 0);
+DELETE FROM `spell_chain` WHERE `first_spell` IN (62764); -- delete this!
+
+-- (70805) Item - Rogue T10 2P Bonus (Rank 3)
+DELETE FROM `spell_proc_event` WHERE `entry` IN (70805);
+INSERT INTO `spell_proc_event` VALUES (70805, 0x00, 0x08, 0x00000000, 0x00000000, 0x00000000, 0x00020000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00004400, 0x00000000, 0, 100, 0);

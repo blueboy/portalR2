@@ -30,6 +30,7 @@
 #include "movement/MoveSpline.h"
 #include "movement/MoveSplineInit.h"
 #include "CreatureLinkingMgr.h"
+#include "DBCStores.h"
 
 #include <cassert>
 
@@ -62,7 +63,15 @@ void MotionMaster::MoveIdle()
     impl()->DropAllStates();
 }
 
-void MotionMaster::MoveRandom()
+void MotionMaster::MoveRandom(float radius)
+{
+    // Wrapper for MoveRandomAroundPoint for move around current point.
+    float x,y,z;
+    m_owner->GetPosition(x,y,z);
+    MoveRandomAroundPoint(x, y, z, radius);
+}
+
+void MotionMaster::MoveRandomAroundPoint(float x, float y, float z, float radius, float verticalZ)
 {
     if (m_owner->GetTypeId() == TYPEID_PLAYER)
     {
@@ -70,8 +79,8 @@ void MotionMaster::MoveRandom()
     }
     else
     {
-        DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "%s move random.", m_owner->GetGuidStr().c_str());
-        Mutate(new RandomMovementGenerator<Creature>(*m_owner), UNIT_ACTION_DOWAYPOINTS);
+        DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "MotionMaster: %s move random.", m_owner->GetGuidStr().c_str());
+        Mutate(new RandomMovementGenerator<Creature>(x, y, z, radius, verticalZ), UNIT_ACTION_DOWAYPOINTS);
     }
 }
 
@@ -331,12 +340,21 @@ void MotionMaster::MoveToDestination(float x, float y, float z, float o, Unit* t
 void MotionMaster::MoveSkyDiving(float x, float y, float z, float o, float horizontalSpeed, float max_height, bool eject)
 {
     Movement::MoveSplineInit init(*m_owner);
-    init.MoveTo(x,y,z,false);
+    init.MoveTo(x,y,z,false, true);
     init.SetParabolic(max_height, 0);
     init.SetVelocity(horizontalSpeed);
     init.SetFacing(o);
     if (!eject)
         init.SetTransportExit();
+    init.Launch();
+    Mutate(new EjectMovementGenerator(0), UNIT_ACTION_EFFECT);
+}
+
+void MotionMaster::MoveWithSpeed(float x, float y, float z, float speed, bool generatePath, bool forceDestination)
+{
+    Movement::MoveSplineInit init(*m_owner);
+    init.MoveTo(x,y,z, generatePath, forceDestination);
+    init.SetVelocity(speed);
     init.Launch();
     Mutate(new EffectMovementGenerator(0), UNIT_ACTION_EFFECT);
 }
@@ -348,7 +366,7 @@ void MotionMaster::MoveFall()
     if (tz <= INVALID_HEIGHT)
     {
         sLog.outError("MotionMaster::MoveFall: unable retrive a proper height at map %u (x: %f, y: %f, z: %f).",
-            m_owner->GetMap()->GetId(), m_owner->GetPositionX(), m_owner->GetPositionX(), m_owner->GetPositionZ());
+            m_owner->GetMap()->GetId(), m_owner->GetPositionX(), m_owner->GetPositionY(), m_owner->GetPositionZ());
         return;
     }
 

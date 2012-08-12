@@ -158,12 +158,12 @@ class WorldPvPNA : public WorldPvP
 
         bool InitWorldPvPArea();
 
-        void FillInitialWorldStates(WorldPacket& data, uint32& count);
+        void FillInitialWorldStates(uint32 zoneId);
         void SendRemoveWorldStates(Player* pPlayer);
 
         void HandlePlayerEnterZone(Player* pPlayer);
         void HandlePlayerLeaveZone(Player* pPlayer);
-        void HandleObjectiveComplete(ObjectGuidSet m_sPlayersSet, uint32 uiEventId);
+        void HandleObjectiveComplete(GuidSet m_sPlayersSet, uint32 uiEventId);
         void HandlePlayerKillInsideArea(Player* pPlayer, Unit* pVictim);
 
         void OnCreatureCreate(Creature* pCreature);

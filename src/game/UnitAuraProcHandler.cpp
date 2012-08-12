@@ -433,7 +433,28 @@ bool Unit::IsTriggeredAtSpellProcEvent(Unit *pVictim, SpellAuraHolderPtr holder,
         uint32 WeaponSpeed = GetAttackTime(attType);
         chance = GetPPMProcChance(WeaponSpeed, spellProcEvent->ppmRate);
     }
-    // Apply chance modifier aura
+
+    // some spells has direct chance modifiers in dummy auras
+    switch(spellProto->SpellFamilyName)
+    {
+        case SPELLFAMILY_SHAMAN:
+        {
+            if (spellProto->SpellFamilyFlags.test<CF_SHAMAN_EARTHLIVING_WEAPON_PASSIVE>())
+            {
+                // only if target has < 35% health
+                if (!pVictim || !pVictim->HasAuraState(AURA_STATE_HEALTHLESS_35_PERCENT))
+                    break;
+
+                // Blessing of the Eternals
+                if (Aura* modAura = GetAuraByEffectMask(SPELL_AURA_DUMMY,SPELLFAMILY_SHAMAN,spellProto->SpellFamilyFlags,GetObjectGuid()))
+                    chance += (float)modAura->GetModifier()->m_amount;
+                break;
+            }
+        }
+        break;
+    }
+
+    // Apply cumulative chance modifier auras
     if (Player* modOwner = GetSpellModOwner())
     {
         modOwner->ApplySpellMod(spellProto->Id,SPELLMOD_CHANCE_OF_SUCCESS,chance);
@@ -2000,7 +2021,7 @@ SpellAuraProcResult Unit::HandleDummyAuraProc(Unit *pVictim, DamageInfo* damageI
                     else
                         radius = GetSpellMaxRange(sSpellRangeStore.LookupEntry(procSpell->rangeIndex));
 
-                    ((Player*)this)->ApplySpellMod(procSpell->Id, SPELLMOD_RADIUS, radius,NULL);
+                    ((Player*)this)->ApplySpellMod(procSpell->Id, SPELLMOD_RADIUS, radius);
 
                     Unit *second = pVictim->SelectRandomFriendlyTarget(pVictim, radius);
 
@@ -2259,17 +2280,7 @@ SpellAuraProcResult Unit::HandleDummyAuraProc(Unit *pVictim, DamageInfo* damageI
                 triggered_spell_id = 37482;                 // Exploited Weakness
                 break;
             }
-            // Guard Dog
-            else if (dummySpell->SpellIconID == 201 && procSpell->SpellIconID == 201)
-            {
-                triggered_spell_id = 54445;
-                target = this;
-                if (pVictim)
-                    pVictim->AddThreat(this,procSpell->EffectBasePoints[0] * triggerAmount / 100.0f);
-                break;
-            }
             break;
-
         }
         case SPELLFAMILY_PALADIN:
         {
@@ -3418,19 +3429,22 @@ SpellAuraProcResult Unit::HandleDummyAuraProc(Unit *pVictim, DamageInfo* damageI
         }
         case SPELLFAMILY_PET:
         {
-            // Improved Cower
-            if (dummySpell->SpellIconID == 958 && procSpell->SpellIconID == 958)
+            switch (dummySpell->SpellIconID)
             {
-                triggered_spell_id = dummySpell->Id == 53180 ? 54200 : 54201;
-                target = this;
-                break;
-            }
-            // Silverback
-            if (dummySpell->SpellIconID == 1582 && procSpell->SpellIconID == 201)
-            {
-                triggered_spell_id = dummySpell->Id == 62764 ? 62800 : 62801;
-                target = this;
-                break;
+                // Guard Dog
+                case 201:
+                {
+                    triggered_spell_id = 54445;
+                    target = this;
+                    if (pVictim)
+                        pVictim->AddThreat(this,procSpell->EffectBasePoints[0] * triggerAmount / 100.0f);
+                    break;
+                }
+                // Silverback
+                case 1582:
+                    triggered_spell_id = dummySpell->Id == 62765 ? 62801 : 62800;
+                    target = this;
+                    break;
             }
             break;
         }
@@ -4384,7 +4398,7 @@ SpellAuraProcResult Unit::HandleProcTriggerSpellAuraProc(Unit *pVictim, DamageIn
         // Enlightenment (trigger only from mana cost spells)
         case 35095:
         {
-            if(!procSpell || procSpell->powerType!=POWER_MANA || (procSpell->manaCost==0 && procSpell->ManaCostPercentage==0 && procSpell->manaCostPerlevel==0))
+            if (!procSpell || procSpell->powerType != POWER_MANA || (procSpell->manaCost == 0 && procSpell->ManaCostPercentage == 0 && procSpell->manaCostPerlevel == 0))
                 return SPELL_AURA_PROC_FAILED;
             break;
         }
@@ -4776,7 +4790,7 @@ SpellAuraProcResult Unit::HandleMendingAuraProc( Unit* /*pVictim*/, DamageInfo* 
 
         if (Player* caster = ((Player*)triggeredByAura->GetCaster()))
         {
-            caster->ApplySpellMod(spellProto->Id, SPELLMOD_RADIUS, radius, NULL);
+            caster->ApplySpellMod(spellProto->Id, SPELLMOD_RADIUS, radius);
 
             SpellAuraHolderPtr holder = GetSpellAuraHolder(spellProto->Id, caster->GetObjectGuid());
 
@@ -4945,6 +4959,12 @@ SpellAuraProcResult Unit::HandleAddPctModifierAuraProc(Unit* /*pVictim*/, Damage
                 if (!(procSpell && procSpell->Id==50782))
                     return SPELL_AURA_PROC_CANT_TRIGGER;
             }
+            break;
+        }
+        case SPELLFAMILY_ROGUE:
+        {
+            if (spellInfo->Id == 70805)           // Item - Rogue T10 2P Bonus (Rank 3)
+                return SPELL_AURA_PROC_CANT_TRIGGER;
             break;
         }
         case SPELLFAMILY_HUNTER:
