@@ -105,7 +105,7 @@ CombatManeuverReturns PlayerbotRogueAI::DoNextCombatManeuver(Unit *pTarget)
 
     switch (m_ai->GetScenarioType())
     {
-        case PlayerbotAI::SCENARIO_DUEL:
+        case PlayerbotAI::SCENARIO_PVP_DUEL:
         {
             if (SINISTER_STRIKE > 0)
             {
