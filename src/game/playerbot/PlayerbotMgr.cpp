@@ -239,7 +239,7 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                 }
                 else
                 {
-                    bot->GetLFGState()->SetRoles(bot->GetPlayerbotAI()->GetRole());
+                    bot->GetLFGPlayerState()->SetRoles(bot->GetPlayerbotAI()->GetRole());
                     // DEBUG_LOG("CMSG_LFG_SET_ROLES (not in group) Player %u roles %u", bot->GetObjectGuid().GetCounter(), bot->GetPlayerbotAI()->GetRole());
                 }
             }

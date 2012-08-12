@@ -1455,18 +1455,18 @@ void PlayerbotAI::ReloadAI()
     SKINNING            = initSpell(SKINNING_1);
 }
 
-uint8 PlayerbotAI::GetRole()
+LFGRoleMask PlayerbotAI::GetRole()
 {
     if (!m_combatOrder)
-        return 0;
+        return LFGRoleMask(0);
     else if (m_combatOrder & ORDERS_TANK)
-        return (1 << ROLE_TANK);
+        return LFGRoleMask(1 << ROLE_TANK);
     else if (m_combatOrder & ORDERS_HEAL)
-        return (1 << ROLE_HEALER);
+        return LFGRoleMask(1 << ROLE_HEALER);
     else if (m_combatOrder & ORDERS_ASSIST)
-        return (1 << ROLE_DAMAGE);
+        return LFGRoleMask(1 << ROLE_DAMAGE);
 
-    return 0;
+    return LFGRoleMask(0);
 }
 
 void PlayerbotAI::SendOrders(Player& /*player*/)
