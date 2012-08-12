@@ -205,7 +205,7 @@ enum UnitRename
     UNIT_CAN_BE_ABANDONED   = 0x02,
 };
 
-#define CREATURE_MAX_SPELLS     8
+#define CREATURE_MAX_SPELLS     4
 
 enum Swing
 {
@@ -231,20 +231,20 @@ enum HitInfo
 {
     HITINFO_NORMALSWING         = 0x00000000,
     HITINFO_UNK0                = 0x00000001,               // req correct packet structure
-    HITINFO_NORMALSWING2        = 0x00000002,
-    HITINFO_LEFTSWING           = 0x00000004,
+    HITINFO_AFFECTS_VICTIM      = 0x00000002,
+    HITINFO_OFFHAND             = 0x00000004,
     HITINFO_UNK3                = 0x00000008,
     HITINFO_MISS                = 0x00000010,
-    HITINFO_ABSORB              = 0x00000020,               // absorbed damage
-    HITINFO_ABSORB2             = 0x00000040,               // absorbed damage
-    HITINFO_RESIST              = 0x00000080,               // resisted atleast some damage
-    HITINFO_RESIST2             = 0x00000100,               // resisted atleast some damage
+    HITINFO_ABSORB              = 0x00000020,               // absorbed
+    HITINFO_PARTIAL_ABSORB      = 0x00000040,               // absorbed at least some damage
+    HITINFO_RESIST              = 0x00000080,               // resisted
+    HITINFO_PARTIAL_RESIST      = 0x00000100,               // resisted at least some damage
     HITINFO_CRITICALHIT         = 0x00000200,               // critical hit
     // 0x00000400
     // 0x00000800
     // 0x00001000
     HITINFO_BLOCK               = 0x00002000,               // blocked damage
-    // 0x00004000
+    HITINFO_NODAMAGE            = 0x00004000,               // Hides worldtext for 0 damage
     // 0x00008000
     HITINFO_GLANCING            = 0x00010000,
     HITINFO_CRUSHING            = 0x00020000,
@@ -253,7 +253,7 @@ enum HitInfo
     // 0x00100000
     HITINFO_SWINGNOHITSOUND     = 0x00200000,               // guessed
     // 0x00400000
-    HITINFO_UNK22               = 0x00800000
+    HITINFO_RAGE_GAIN           = 0x00800000
 };
 
 //i would like to remove this: (it is defined in item.h
@@ -885,6 +885,12 @@ enum MeleeHitOutcome
     MELEE_HIT_NORMAL    = 8,
 };
 
+enum DamageFlags
+{
+    DAMAGE_FREEACTION   = 0,
+    DAMAGE_SHARED       = 1,
+};
+
 //struct CleanDamage
 //struct CalcDamageInfo
 //struct SpellNonMeleeDamage
@@ -958,15 +964,24 @@ struct DamageInfo
     uint32 TargetState;
     MeleeHitOutcome hitOutCome;  // TODO: remove this field (need use TargetState)
 
+    uint32 rage;
+
     // Proc states
     uint32 procAttacker;
     uint32 procVictim;
     uint32 procEx;
 
     // Helpers
+    bool   durabilityLoss;
     bool   physicalLog;
     bool   unused;
     bool   IsMeleeDamage() { return !m_spellInfo; };
+
+    uint32         m_flags;
+    uint32 const&  GetFlags();
+    void           AddFlag(DamageFlags flag)       { m_flags |= (1 << flag); };
+    void           RemoveFlag(DamageFlags flag)    { m_flags &= ~(1 << flag); };
+    bool           HasFlag(DamageFlags flag) const { return (m_flags & (1 << flag)); };
 };
 
 
@@ -1170,8 +1185,8 @@ struct MANGOS_DLL_SPEC CharmInfo
         CharmSpellEntry* GetCharmSpell(uint8 index) { return &(m_charmspells[index]); }
 
         GlobalCooldownMgr& GetGlobalCooldownMgr() { return m_GlobalCooldownMgr; }
-    private:
 
+    private:
         Unit* m_unit;
         UnitActionBarEntry PetActionBar[MAX_UNIT_ACTION_BAR_INDEX];
         CharmSpellEntry m_charmspells[CREATURE_MAX_SPELLS];
@@ -1210,8 +1225,8 @@ enum IgnoreUnitState
     IGNORE_UNIT_TARGET_NON_FROZEN = 126,                    // ignore absent of frozen state
 };
 
-typedef std::set<ObjectGuid> GuardianPetList;
-typedef std::set<ObjectGuid> GroupPetList;
+typedef GuidSet GuardianPetList;
+typedef GuidSet GroupPetList;
 
 // delay time next attack to prevent client attack animation problems
 #define ATTACK_DISPLAY_DELAY 200
@@ -1404,6 +1419,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void DealDamageMods(Unit *pVictim, uint32 &damage, uint32* absorb);
         uint32 DealDamage(Unit *pVictim, uint32 damage, DamageInfo* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellEntry const *spellProto, bool durabilityLoss);
         uint32 DealDamage(Unit* pVictim, DamageInfo* damageInfo, bool durabilityLoss);
+        uint32 DealDamage(DamageInfo* damageInfo);
         int32  DealHeal(Unit* pVictim, uint32 addhealth, SpellEntry const* spellProto, bool critical = false, uint32 absorb = 0);
 
         void PetOwnerKilledUnit(Unit* pVictim);
@@ -1563,12 +1579,13 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void SendMonsterMoveTransport(WorldObject *transport, SplineType type, SplineFlags flags, uint32 moveTime, ...);
         virtual bool SetPosition(float x, float y, float z, float orientation, bool teleport = false);
 
-        void MonsterMoveWithSpeed(float x, float y, float z, float speed, bool generatePath = false, bool forceDestination = false);
+        void MonsterMoveWithSpeed(float x, float y, float z, float speed, bool generatePath = true, bool forceDestination = false);
         // recommend use MonsterMove/MonsterMoveWithSpeed for most case that correctly work with movegens
         // if used additional args in ... part then floats must explicitly casted to double
         void SendHeartBeat();
         bool IsLevitating() const { return m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING);}
         bool IsWalking() const { return m_movementInfo.HasMovementFlag(MOVEFLAG_WALK_MODE);}
+        bool IsFalling() { return m_movementInfo.HasMovementFlag(MovementFlags(MOVEFLAG_FALLING | MOVEFLAG_FALLINGFAR));};
 
         void SetInFront(Unit const* target);
         void SetFacingTo(float ori);
@@ -1841,10 +1858,10 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void UpdateVisibilityAndView();                     // overwrite WorldObject::UpdateVisibilityAndView()
 
         // common function for visibility checks for player/creatures with detection code
-        bool isVisibleForOrDetect(Unit const* u, WorldObject const* viewPoint, bool detect, bool inVisibleList = false, bool is3dDistance = true) const;
+        bool isVisibleForOrDetect(Unit const* u, WorldObject const* viewPoint, bool detect, bool inVisibleList = false, bool is3dDistance = true, bool skipLOScheck = false) const;
         bool canDetectInvisibilityOf(Unit const* u) const;
         void SetPhaseMask(uint32 newPhaseMask, bool update);// overwrite WorldObject::SetPhaseMask
-        bool IsVisibleTargetForAoEDamage(WorldObject const* caster, SpellEntry const* spellInfo) const;
+        bool IsVisibleTargetForSpell(WorldObject const* caster, SpellEntry const* spellInfo) const;
 
         // virtual functions for all world objects types
         bool isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool inVisibleList) const;
@@ -2174,8 +2191,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
 
         SingleCastSpellTargetMap m_singleCastSpellTargets;  // casted by unit single per-caster auras
 
-        typedef std::list<ObjectGuid> DynObjectGUIDs;
-        DynObjectGUIDs m_dynObjGUIDs;
+        GuidList m_dynObjGUIDs;
 
         typedef std::list<GameObject*> GameObjectList;
         GameObjectList m_gameObj;
@@ -2230,6 +2246,8 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         Unit* _GetTotem(TotemSlot slot) const;              // for templated function without include need
         Pet* _GetPet(ObjectGuid guid) const;                // for templated function without include need
 
+        void JustKilledCreature(Creature* victim);          // Wrapper called by DealDamage when a creature is killed
+
         uint32 m_state;                                     // Even derived shouldn't modify
         uint32 m_CombatTimer;
 
@@ -2259,7 +2277,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
 
         EventProcessor m_Events;
 
-        GuardianPetList m_guardianPets;
+        GuidSet m_guardianPets;
 
         ObjectGuid m_TotemSlot[MAX_TOTEM_SLOT];
         UnitStateMgr m_stateMgr;
@@ -2303,7 +2321,7 @@ void Unit::CallForAllControlledUnits(Func const& func, uint32 controlledMask)
 
     if (controlledMask & CONTROLLED_GUARDIANS)
     {
-        for(GuardianPetList::const_iterator itr = m_guardianPets.begin(); itr != m_guardianPets.end();)
+        for (GuidSet::const_iterator itr = m_guardianPets.begin(); itr != m_guardianPets.end();)
             if (Pet* guardian = _GetPet(*(itr++)))
                 func(guardian);
     }
@@ -2337,7 +2355,7 @@ bool Unit::CheckAllControlledUnits(Func const& func, uint32 controlledMask) cons
 
     if (controlledMask & CONTROLLED_GUARDIANS)
     {
-        for(GuardianPetList::const_iterator itr = m_guardianPets.begin(); itr != m_guardianPets.end();)
+        for (GuidSet::const_iterator itr = m_guardianPets.begin(); itr != m_guardianPets.end();)
             if (Pet const* guardian = _GetPet(*(itr++)))
                 if (func(guardian))
                     return true;

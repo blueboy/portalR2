@@ -27,6 +27,7 @@
 #include "GridNotifiersImpl.h"
 #include "Cell.h"
 #include "CellImpl.h"
+#include "SQLStorages.h"
 
 #include "revision_nr.h"
 
@@ -43,7 +44,6 @@ INSTANTIATE_SINGLETON_1(ScriptMgr);
 
 ScriptMgr::ScriptMgr() :
     m_hScriptLib(NULL),
-    
     m_scheduledScripts(0),
 
     m_pOnInitScriptLibrary(NULL),
@@ -598,7 +598,7 @@ void ScriptMgr::LoadScripts(ScriptMapMapName& scripts, const char* tablename)
                         if (SpellEntry const* spell = sSpellStore.LookupEntry(i))
                             for (int j = 0; j < MAX_EFFECT_INDEX; ++j)
                             {
-                                if (spell->Effect[j] == SPELL_EFFECT_SEND_TAXI && spell->EffectMiscValue[j] == tmp.sendTaxiPath.taxiPathId)
+                                if (spell->Effect[j] == SPELL_EFFECT_SEND_TAXI && spell->EffectMiscValue[j] == int32(tmp.sendTaxiPath.taxiPathId))
                                 {
                                     taxiSpell = i;
                                     break;
@@ -1246,7 +1246,12 @@ void ScriptAction::HandleScriptStep()
             }
 
             if (m_script->killCredit.isGroupCredit)
-                pPlayer->RewardPlayerAndGroupAtEvent(creatureEntry, pRewardSource);
+            {
+                WorldObject* pSearcher = pRewardSource ? pRewardSource : (pSource ? pSource : pTarget);
+                if (pSearcher != pRewardSource)
+                    sLog.outDebug(" DB-SCRIPTS: Process table `%s` id %u, SCRIPT_COMMAND_KILL_CREDIT called for groupCredit without creature as searcher, script might need adjustment.", m_table, m_script->id);
+                pPlayer->RewardPlayerAndGroupAtEvent(creatureEntry, pSearcher);
+            }
             else
                 pPlayer->KilledMonsterCredit(creatureEntry, pRewardSource ? pRewardSource->GetObjectGuid() : ObjectGuid());
 
@@ -1310,7 +1315,7 @@ void ScriptAction::HandleScriptStep()
             float z = m_script->z;
             float o = m_script->o;
 
-            Creature* pCreature = pSource->SummonCreature(m_script->summonCreature.creatureEntry, x, y, z, o, m_script->summonCreature.despawnDelay ? TEMPSUMMON_TIMED_OR_DEAD_DESPAWN : TEMPSUMMON_DEAD_DESPAWN, m_script->summonCreature.despawnDelay, (m_script->data_flags & SCRIPT_FLAG_COMMAND_ADDITIONAL) ? true: false);
+            Creature* pCreature = pSource->SummonCreature(m_script->summonCreature.creatureEntry, x, y, z, o, m_script->summonCreature.despawnDelay ? TEMPSUMMON_TIMED_OR_DEAD_OR_LOST_UNIQUENESS_DESPAWN : TEMPSUMMON_DEAD_OR_LOST_UNIQUENESS_DESPAWN, m_script->summonCreature.despawnDelay, (m_script->data_flags & SCRIPT_FLAG_COMMAND_ADDITIONAL) ? true: false);
             if (!pCreature)
             {
                 sLog.outError(" DB-SCRIPTS: Process table `%s` id %u, command %u failed for creature (entry: %u).", m_table, m_script->id, m_script->command, m_script->summonCreature.creatureEntry);
@@ -1482,7 +1487,15 @@ void ScriptAction::HandleScriptStep()
                     ((Creature*)pSource)->GetMotionMaster()->MoveIdle();
                     break;
                 case RANDOM_MOTION_TYPE:
-                    ((Creature*)pSource)->GetMotionMaster()->MoveRandom();
+                    if (m_script->data_flags & SCRIPT_FLAG_COMMAND_ADDITIONAL)
+                        ((Creature*)pSource)->GetMotionMaster()->MoveRandomAroundPoint(pSource->GetPositionX(), pSource->GetPositionY(), pSource->GetPositionZ(), float(m_script->movement.wanderDistance));
+                    else
+                    {
+                        float respX, respY, respZ, respO, wander_distance;
+                        ((Creature*)pSource)->GetRespawnCoord(respX, respY, respZ, &respO, &wander_distance);
+                        wander_distance = m_script->movement.wanderDistance ? m_script->movement.wanderDistance : wander_distance;
+                        ((Creature*)pSource)->GetMotionMaster()->MoveRandomAroundPoint(respX, respY, respZ, wander_distance);
+                    }
                     break;
                 case WAYPOINT_MOTION_TYPE:
                     ((Creature*)pSource)->GetMotionMaster()->MoveWaypoint();

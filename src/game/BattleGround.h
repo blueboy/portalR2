@@ -24,6 +24,7 @@
 #include "Map.h"
 #include "ByteBuffer.h"
 #include "ObjectGuid.h"
+#include "WorldStateMgr.h"
 
 // magic event-numbers
 #define BG_EVENT_NONE 255
@@ -434,7 +435,8 @@ class BattleGround
 
         /* Packet Transfer */
         // method that should fill worldpacket with actual world states (not yet implemented for all battlegrounds!)
-        virtual void FillInitialWorldStates(WorldPacket& /*data*/, uint32& /*count*/) {}
+        virtual void FillInitialWorldStates() {}
+        void FillInitialWorldState(uint32 stateId, uint32 value);
         void SendPacketToTeam(Team team, WorldPacket *packet, Player *sender = NULL, bool self = true);
         void SendPacketToAll(WorldPacket *packet);
 
@@ -538,11 +540,8 @@ class BattleGround
 
         void HandleTriggerBuff(ObjectGuid go_guid);
 
-        // TODO: make this protected:
-        typedef std::vector<ObjectGuid> BGObjects;
-        typedef std::vector<ObjectGuid> BGCreatures;
         // TODO drop m_BGObjects
-        BGObjects m_BgObjects;
+        GuidVector m_BgObjects;
         void SpawnBGObject(ObjectGuid guid, uint32 respawntime);
         bool AddObject(uint32 type, uint32 entry, float x, float y, float z, float o, float rotation0, float rotation1, float rotation2, float rotation3, uint32 respawnTime = 0);
         void SpawnBGCreature(ObjectGuid guid, uint32 respawntime);
@@ -565,8 +564,8 @@ class BattleGround
 
         struct EventObjects
         {
-            BGObjects gameobjects;
-            BGCreatures creatures;
+            GuidVector gameobjects;
+            GuidVector creatures;
         };
 
         // cause we create it dynamicly i use a map - to avoid resizing when
@@ -663,43 +662,5 @@ class BattleGround
         float m_TeamStartLocZ[PVP_TEAM_COUNT];
         float m_TeamStartLocO[PVP_TEAM_COUNT];
 };
-
-// helper functions for world state list fill
-inline void FillInitialWorldState(ByteBuffer& data, uint32& count, uint32 state, uint32 value)
-{
-    data << uint32(state);
-    data << uint32(value);
-    ++count;
-}
-
-inline void FillInitialWorldState(ByteBuffer& data, uint32& count, uint32 state, int32 value)
-{
-    data << uint32(state);
-    data << int32(value);
-    ++count;
-}
-
-inline void FillInitialWorldState(ByteBuffer& data, uint32& count, uint32 state, bool value)
-{
-    data << uint32(state);
-    data << uint32(value?1:0);
-    ++count;
-}
-
-struct WorldStatePair
-{
-    uint32 state;
-    uint32 value;
-};
-
-inline void FillInitialWorldState(ByteBuffer& data, uint32& count, WorldStatePair const* array)
-{
-    for(WorldStatePair const* itr = array; itr->state; ++itr)
-    {
-        data << uint32(itr->state);
-        data << uint32(itr->value);
-        ++count;
-    }
-}
 
 #endif

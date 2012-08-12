@@ -248,10 +248,9 @@ class WorldPvPEP : public WorldPvP
 
         void HandlePlayerEnterZone(Player* pPlayer);
         void HandlePlayerLeaveZone(Player* pPlayer);
-        void HandleObjectiveComplete(ObjectGuidSet m_sPlayersSet, uint32 uiEventId);
+        void HandleObjectiveComplete(GuidSet m_sPlayersSet, uint32 uiEventId);
 
-        void FillInitialWorldStates(WorldPacket& data, uint32& count);
-        void SendRemoveWorldStates(Player* pPlayer);
+        void FillInitialWorldStates(uint32 zoneId);
 
     private:
         // update world state

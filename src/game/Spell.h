@@ -510,6 +510,9 @@ class Spell
         // m_originalCasterGUID can store GO guid, and in this case this is visual caster
         WorldObject* GetCastingObject() const;
 
+        // Unstead of GetAffectiveCaster() not return NULL if original caster is GameObject.
+        Unit* GetAffectiveUnitCaster() const { return (m_originalCaster ? m_originalCaster : m_caster); }
+
         int32 GetPowerCost() const { return m_powerCost; }
 
         void UpdatePointers();                              // must be used at call Spell code after time delay (non triggered spell cast/update spell call/etc)
@@ -765,30 +768,42 @@ namespace MaNGOS
                     }
                     break;
                 case PUSH_DEST_CENTER:
-                    if (i_spell.m_targets.m_targetMask & TARGET_FLAG_DEST_LOCATION)
-                    {
-                        i_centerX = i_spell.m_targets.m_destX;
-                        i_centerY = i_spell.m_targets.m_destY;
-                        i_centerZ = i_spell.m_targets.m_destZ;
-                    }
-                    else
+                {
+                    // This hack from Schmoo - need revert in original state after rework spellsystem on separate
+                    // per-effect targeting
+                    if (i_spell.m_targets.m_targetMask & TARGET_FLAG_SOURCE_LOCATION)
                     {
                         i_centerX = i_spell.m_targets.m_srcX;
                         i_centerY = i_spell.m_targets.m_srcY;
                         i_centerZ = i_spell.m_targets.m_srcZ;
                     }
+                    else
+                    {
+                        i_centerX = i_spell.m_targets.m_destX;
+                        i_centerY = i_spell.m_targets.m_destY;
+                        i_centerZ = i_spell.m_targets.m_destZ;
+                    }
                     break;
+                }
                 case PUSH_INHERITED_CENTER:
                 {
                     if ((i_spell.m_targets.m_targetMask & TARGET_FLAG_DEST_LOCATION) || (i_spell.m_targets.m_targetMask & TARGET_FLAG_UNIT))
                     {
                         i_centerX = i_spell.m_targets.m_destX;
                         i_centerY = i_spell.m_targets.m_destY;
+                        i_centerZ = i_spell.m_targets.m_destZ;
                     }
                     else if (i_spell.m_targets.m_targetMask & TARGET_FLAG_SOURCE_LOCATION)
                     {
                         i_centerX = i_spell.m_targets.m_srcX;
                         i_centerY = i_spell.m_targets.m_srcY;
+                        i_centerZ = i_spell.m_targets.m_srcZ;
+                    }
+                    else
+                    {
+                        i_centerX = i_spell.m_targets.m_destX;
+                        i_centerY = i_spell.m_targets.m_destY;
+                        i_centerZ = i_spell.m_targets.m_destZ;
                     }
                     break;
                 }
@@ -855,7 +870,7 @@ namespace MaNGOS
                                 continue;
                         }
 
-                        if (!itr->getSource()->IsVisibleTargetForAoEDamage(i_originalCaster, i_spell.m_spellInfo))
+                        if (!itr->getSource()->IsVisibleTargetForSpell(i_originalCaster, i_spell.m_spellInfo))
                             continue;
                     }
                     break;

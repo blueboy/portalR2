@@ -2122,7 +2122,7 @@ bool Pet::Create(uint32 guidlow, CreatureCreatePos& cPos, CreatureInfo const* ci
     if (!InitEntry(cinfo->Entry))
         return false;
 
-    cPos.SelectFinalPoint(this);
+    cPos.SelectFinalPoint(this, true);
 
     if (!cPos.Relocate(this))
         return false;
@@ -3353,7 +3353,7 @@ Unit* Pet::SelectPreferredTargetForSpell(SpellEntry const* spellInfo)
         {
             if (PetAI* ai = ((PetAI*)AI()))
             {
-                ObjectGuidSet const& allys = ai->GetAllyGuids();
+                GuidSet const& allys = ai->GetAllyGuids();
                 uint32 ally_size = allys.size();
                 switch (ally_size)
                 {
@@ -3367,7 +3367,7 @@ Unit* Pet::SelectPreferredTargetForSpell(SpellEntry const* spellInfo)
                     {
                         target = NULL;
                         uint32 t_num = urand(0,ally_size -1);
-                        for(ObjectGuidSet::const_iterator itr = allys.begin(); itr != allys.end(); ++itr)
+                        for (GuidSet::const_iterator itr = allys.begin(); itr != allys.end(); ++itr)
                         {
                             if (t_num > 0)
                             {
