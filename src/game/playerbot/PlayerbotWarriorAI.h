@@ -110,6 +110,9 @@ public:
     //Buff/rebuff shouts
     void CheckShouts();
 
+    // Utility Functions
+    bool CanPull();
+
 private:
     CombatManeuverReturns DoFirstCombatManeuverPVE(Unit* pTarget);
     CombatManeuverReturns DoNextCombatManeuverPVE(Unit* pTarget);
