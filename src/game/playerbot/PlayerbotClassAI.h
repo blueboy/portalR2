@@ -72,6 +72,7 @@ public:
     Player* GetPlayerBot() { return m_bot; }
     PlayerbotAI* GetAI() { return m_ai; };
     bool CanPull();
+    bool CastHoTOnTank();
 
 protected:
     virtual CombatManeuverReturns DoFirstCombatManeuverPVE(Unit*);
