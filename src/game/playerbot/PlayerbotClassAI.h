@@ -63,6 +63,7 @@ public:
     // all combat actions go here
     virtual CombatManeuverReturns DoFirstCombatManeuver(Unit*);
     virtual CombatManeuverReturns DoNextCombatManeuver(Unit*);
+    bool Pull() { return false; }
 
     // all non combat actions go here, ex buffs, heals, rezzes
     virtual void DoNonCombatActions();
@@ -70,7 +71,7 @@ public:
     // Utilities
     Player* GetMaster() { return m_master; }
     Player* GetPlayerBot() { return m_bot; }
-    PlayerbotAI* GetAI() { return m_ai; };
+    PlayerbotAI* GetAI() { return m_ai; }
     bool CanPull();
     bool CastHoTOnTank();
 
