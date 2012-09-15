@@ -2860,7 +2860,7 @@ void PlayerbotAI::GetCombatTarget(Unit* forcedTarget)
     // check for attackers on protected unit, and make it a forcedTarget if any
     if (!forcedTarget && (m_combatOrder & ORDERS_PROTECT) && m_targetProtect != 0)
     {
-        Unit *newTarget = FindAttacker((ATTACKERINFOTYPE) (AIT_VICTIMNOTSELF | AIT_HIGHESTTHREAT), m_targetProtect);
+        Unit* newTarget = FindAttacker((ATTACKERINFOTYPE) (AIT_VICTIMNOTSELF | AIT_HIGHESTTHREAT), m_targetProtect);
         if (newTarget && newTarget != m_targetCombat)
         {
             forcedTarget = newTarget;
@@ -2873,7 +2873,7 @@ void PlayerbotAI::GetCombatTarget(Unit* forcedTarget)
     {
         if (m_mgr->m_confDebugWhisper)
             TellMaster("Changing target to %s by force!", forcedTarget->GetName());
-        m_targetType = (m_combatOrder == ORDERS_TANK ? TARGET_THREATEN : TARGET_NORMAL);
+        m_targetType = (m_combatOrder & ORDERS_TANK ? TARGET_THREATEN : TARGET_NORMAL);
     }
 
     // we already have a target and we are not forced to change it
@@ -2892,14 +2892,14 @@ void PlayerbotAI::GetCombatTarget(Unit* forcedTarget)
         m_targetCombat = FindAttacker((ATTACKERINFOTYPE) (AIT_VICTIMNOTSELF | AIT_LOWESTTHREAT), m_targetAssist);
         if (m_mgr->m_confDebugWhisper && m_targetCombat)
             TellMaster("Attacking %s to assist %s", m_targetCombat->GetName(), m_targetAssist->GetName());
-        m_targetType = (m_combatOrder == ORDERS_TANK ? TARGET_THREATEN : TARGET_NORMAL);
+        m_targetType = (m_combatOrder & ORDERS_TANK ? TARGET_THREATEN : TARGET_NORMAL);
         m_targetChanged = true;
     }
     // are there any other attackers?
     if (!m_targetCombat)
     {
         m_targetCombat = FindAttacker();
-        m_targetType = (m_combatOrder == ORDERS_TANK ? TARGET_THREATEN : TARGET_NORMAL);
+        m_targetType = (m_combatOrder & ORDERS_TANK ? TARGET_THREATEN : TARGET_NORMAL);
         m_targetChanged = true;
     }
     // no attacker found anyway
@@ -4218,7 +4218,7 @@ void PlayerbotAI::SetCombatOrderByStr(std::string str, Unit *target)
         m_FollowAutoGo = FOLLOWAUTOGO_INIT;
 }
 
-void PlayerbotAI::SetCombatOrder(CombatOrderType co, Unit *target)
+void PlayerbotAI::SetCombatOrder(CombatOrderType co, Unit* target)
 {
     uint32 gTempTarget;
     std::string gname;
@@ -8469,10 +8469,7 @@ void PlayerbotAI::_HandleCommandOrders(std::string &text, Player &fromPlayer)
         {
             ObjectGuid targetGUID = fromPlayer.GetSelectionGuid();
             if (text == "" && !targetGUID)
-            {
-                SendWhisper("|cffff0000Combat orders protect and assist expect a target either by selection or by giving target player in command string!", fromPlayer);
-                return;
-            }
+                return SendWhisper("|cffff0000Combat orders protect and assist expect a target either by selection or by giving target player in command string!", fromPlayer);
 
             if (text != "")
             {
@@ -8481,15 +8478,12 @@ void PlayerbotAI::_HandleCommandOrders(std::string &text, Player &fromPlayer)
             }
             target = ObjectAccessor::GetUnit(fromPlayer, targetGUID);
             if (!target)
-            {
-                SendWhisper("|cffff0000Invalid target for combat order protect or assist!", fromPlayer);
-                return;
-            }
+                return SendWhisper("|cffff0000Invalid target for combat order protect or assist!", fromPlayer);
 
             if (protect != std::string::npos)
-                SetCombatOrderByStr("protect", target);
+                SetCombatOrder(ORDERS_PROTECT, target);
             else if (assist != std::string::npos)
-                SetCombatOrderByStr("assist", target);
+                SetCombatOrder(ORDERS_ASSIST, target);
         }
         else
             SetCombatOrderByStr(text, target);
