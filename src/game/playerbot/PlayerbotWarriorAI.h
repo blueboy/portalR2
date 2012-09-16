@@ -33,6 +33,7 @@ enum
 
 enum WarriorSpells
 {
+    AUTO_SHOT_2                     = 75,
     BATTLE_SHOUT_1                  = 6673,
     BATTLE_STANCE_1                 = 2457,
     BERSERKER_RAGE_1                = 18499,
@@ -194,6 +195,9 @@ private:
            WAR_STOMP,
            BERSERKING,
            WILL_OF_THE_FORSAKEN;
+
+    // general
+    uint32 AUTO_SHOT;
 
     uint32 SpellSequence;
 };
