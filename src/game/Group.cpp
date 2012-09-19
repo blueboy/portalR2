@@ -28,13 +28,14 @@
 #include "Group.h"
 #include "Formulas.h"
 #include "ObjectAccessor.h"
-#include "BattleGround.h"
-#include "BattleGroundMgr.h"
+#include "BattleGround/BattleGround.h"
+#include "BattleGround/BattleGroundMgr.h"
 #include "MapManager.h"
 #include "MapPersistentStateMgr.h"
 #include "Util.h"
 #include "LootMgr.h"
 #include "LFGMgr.h"
+#include "UpdateFieldFlags.h"
 
 // Playerbot mod:
 #include "playerbot/PlayerbotMgr.h"
@@ -91,21 +92,21 @@ Group::Group() : m_Guid(ObjectGuid()), m_groupType(GROUPTYPE_NORMAL),
 
 Group::~Group()
 {
-    if(m_bgGroup)
+    if (m_bgGroup)
     {
         DEBUG_LOG("Group::~Group: battleground group being deleted.");
-        if(m_bgGroup->GetBgRaid(ALLIANCE) == this)
+        if (m_bgGroup->GetBgRaid(ALLIANCE) == this)
             m_bgGroup->SetBgRaid(ALLIANCE, NULL);
-        else if(m_bgGroup->GetBgRaid(HORDE) == this)
+        else if (m_bgGroup->GetBgRaid(HORDE) == this)
             m_bgGroup->SetBgRaid(HORDE, NULL);
         else
             sLog.outError("Group::~Group: battleground group is not linked to the correct battleground.");
     }
     Rolls::iterator itr;
-    while(!RollId.empty())
+    while (!RollId.empty())
     {
         itr = RollId.begin();
-        Roll *r = *itr;
+        Roll* r = *itr;
         RollId.erase(itr);
         delete(r);
     }
@@ -113,8 +114,8 @@ Group::~Group()
     // it is undefined whether objectmgr (which stores the groups) or instancesavemgr
     // will be unloaded first so we must be prepared for both cases
     // this may unload some dungeon persistent state
-    for(uint8 i = 0; i < MAX_DIFFICULTY; ++i)
-        for(BoundInstancesMap::iterator itr2 = m_boundInstances[i].begin(); itr2 != m_boundInstances[i].end(); ++itr2)
+    for (uint8 i = 0; i < MAX_DIFFICULTY; ++i)
+        for (BoundInstancesMap::iterator itr2 = m_boundInstances[i].begin(); itr2 != m_boundInstances[i].end(); ++itr2)
             itr2->second.state->RemoveGroup(this);
 
     // Sub group counters clean up
@@ -125,7 +126,7 @@ Group::~Group()
         delete m_LFGState;
 }
 
-bool Group::Create(ObjectGuid guid, const char * name)
+bool Group::Create(ObjectGuid guid, const char* name)
 {
     m_leaderGuid = guid;
     m_leaderName = name;
@@ -146,8 +147,8 @@ bool Group::Create(ObjectGuid guid, const char * name)
     {
         m_Guid = ObjectGuid(HIGHGUID_GROUP,sObjectMgr.GenerateGroupLowGuid());
 
-        Player *leader = sObjectMgr.GetPlayer(guid);
-        if(leader)
+        Player* leader = sObjectMgr.GetPlayer(guid);
+        if (leader)
         {
             SetDungeonDifficulty(leader->GetDungeonDifficulty());
             SetRaidDifficulty(leader->GetRaidDifficulty());
@@ -161,14 +162,14 @@ bool Group::Create(ObjectGuid guid, const char * name)
         CharacterDatabase.PExecute("DELETE FROM group_member WHERE groupId ='%u'", m_Guid.GetCounter());
 
         CharacterDatabase.PExecute("INSERT INTO groups (groupId,leaderGuid,lootMethod,looterGuid,lootThreshold,icon1,icon2,icon3,icon4,icon5,icon6,icon7,icon8,groupType,difficulty,raiddifficulty) "
-            "VALUES ('%u','%u','%u','%u','%u','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','%u','%u','%u')",
-            m_Guid.GetCounter(), m_leaderGuid.GetCounter(), uint32(m_lootMethod),
-            m_looterGuid.GetCounter(), uint32(m_lootThreshold),
-            m_targetIcons[0].GetRawValue(), m_targetIcons[1].GetRawValue(),
-            m_targetIcons[2].GetRawValue(), m_targetIcons[3].GetRawValue(),
-            m_targetIcons[4].GetRawValue(), m_targetIcons[5].GetRawValue(),
-            m_targetIcons[6].GetRawValue(), m_targetIcons[7].GetRawValue(),
-            uint8(m_groupType), uint32(GetDungeonDifficulty()), uint32(GetRaidDifficulty()));
+                                   "VALUES ('%u','%u','%u','%u','%u','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','" UI64FMTD "','%u','%u','%u')",
+                                   m_Guid.GetCounter(), m_leaderGuid.GetCounter(), uint32(m_lootMethod),
+                                   m_looterGuid.GetCounter(), uint32(m_lootThreshold),
+                                   m_targetIcons[0].GetRawValue(), m_targetIcons[1].GetRawValue(),
+                                   m_targetIcons[2].GetRawValue(), m_targetIcons[3].GetRawValue(),
+                                   m_targetIcons[4].GetRawValue(), m_targetIcons[5].GetRawValue(),
+                                   m_targetIcons[6].GetRawValue(), m_targetIcons[7].GetRawValue(),
+                                   uint8(m_groupType), uint32(GetDungeonDifficulty()), uint32(GetRaidDifficulty()));
     }
     else
         m_Guid =  ObjectGuid(HIGHGUID_GROUP,uint32(0));
@@ -251,7 +252,7 @@ void Group::ConvertToRaid()
 
     _initRaidSubGroupsCounter();
 
-    if(!isBGGroup())
+    if (!isBGGroup())
         CharacterDatabase.PExecute("UPDATE groups SET groupType = %u WHERE groupId='%u'", uint8(m_groupType), m_Guid.GetCounter());
     SendUpdate();
 
@@ -369,6 +370,48 @@ bool Group::AddMember(ObjectGuid guid, const char* name)
         if(isRaidGroup())
             player->UpdateForQuestWorldObjects();
 
+        // Broadcast new player group member fields to rest of the group
+        player->SetFieldNotifyFlag(UF_FLAG_PARTY_MEMBER);
+
+        UpdateData data;
+        WorldPacket packet;
+
+        // Broadcast group members' fields to player
+        for (GroupReference* itr = GetFirstMember(); itr != NULL; itr = itr->next())
+        {
+            if (itr->getSource() == player)
+                continue;
+
+            if (Player* member = itr->getSource())
+            {
+                if (player->HaveAtClient(member))
+                {
+                    member->SetFieldNotifyFlag(UF_FLAG_PARTY_MEMBER);
+                    member->BuildValuesUpdateBlockForPlayer(&data, player);
+                    member->RemoveFieldNotifyFlag(UF_FLAG_PARTY_MEMBER);
+                }
+
+                if (member->HaveAtClient(player))
+                {
+                    UpdateData mdata;
+                    WorldPacket mpacket;
+                    player->BuildValuesUpdateBlockForPlayer(&mdata, member);
+                    if (mdata.HasData())
+                    {
+                        mdata.BuildPacket(&mpacket);
+                        member->SendDirectMessage(&mpacket);
+                    }
+                }
+            }
+        }
+
+        if (data.HasData())
+        {
+            data.BuildPacket(&packet);
+            player->SendDirectMessage(&packet);
+        }
+
+        player->RemoveFieldNotifyFlag(UF_FLAG_PARTY_MEMBER);
     }
 
     return true;

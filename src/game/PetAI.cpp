@@ -97,6 +97,13 @@ void PetAI::Reset()
             continue;
         }
 
+        // Voracious Appetite && Cannibalize && Carrion Feeder
+        if (spellInfo->HasAttribute(SPELL_ATTR_ABILITY) && spellInfo->HasAttribute(SPELL_ATTR_EX2_ALLOW_DEAD_TARGET))
+        {
+            m_spellType[PET_SPELL_HEAL].insert(spellID);
+            continue;
+        }
+
         if (IsPositiveSpell(spellInfo) && IsSpellAppliesAura(spellInfo))
         {
             m_spellType[PET_SPELL_BUFF].insert(spellID);
@@ -181,6 +188,9 @@ void PetAI::Reset()
         attackDistance = 0.0f;
     }
     m_savedAIType = m_AIType;
+
+    if (!m_creature->IsInUnitState(UNIT_ACTION_HOME))
+        m_creature->GetMotionMaster()->MoveTargetedHome();
 
     DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS,"PetAI::Reset %s, AI %u dist %f, spells: %u %u %u %u %u %u %u %u %u %u %u %u",
         m_creature->GetObjectGuid().GetString().c_str(),
@@ -321,12 +331,7 @@ void PetAI::MoveToVictim(Unit* u)
     switch (m_AIType)
     {
         case PET_AI_PASSIVE:
-            if (Unit* owner = m_creature->GetCharmerOrOwner())
-                m_creature->GetMotionMaster()->MoveFollow(owner,PET_FOLLOW_DIST, m_creature->IsPet() ? ((Pet*)m_creature)->GetPetFollowAngle() : PET_FOLLOW_ANGLE);
-            break;
         case PET_AI_SLACKER:
-            m_creature->GetMotionMaster()->MoveFleeing(u);
-            break;
         case PET_AI_HEALER:
             if (Unit* owner = m_creature->GetCharmerOrOwner())
                 m_creature->GetMotionMaster()->MoveChase(owner, PET_FOLLOW_DIST, m_creature->IsPet() ? ((Pet*)m_creature)->GetPetFollowAngle() : PET_FOLLOW_ANGLE);
@@ -351,6 +356,7 @@ void PetAI::EnterEvadeMode()
 {
     Reset();
     UpdateAIType();
+    m_creature->GetMotionMaster()->MoveTargetedHome();
 }
 
 bool PetAI::IsVisible(Unit *pl) const
@@ -380,17 +386,12 @@ void PetAI::_stopAttack()
 {
     inCombat = false;
 
-    m_creature->CastStop(true);
-    m_creature->AttackStop();
-
-    Unit* owner = m_creature->GetCharmerOrOwner();
-    if(owner && m_creature->GetCharmInfo() && m_creature->GetCharmInfo()->HasState(CHARM_STATE_COMMAND,COMMAND_FOLLOW))
+    if (IsInCombat())
     {
-        m_creature->GetMotionMaster()->MoveFollow(owner,PET_FOLLOW_DIST, m_creature->IsPet() ? ((Pet*)m_creature)->GetPetFollowAngle() : PET_FOLLOW_ANGLE);
-    }
-    else
-    {
-        m_creature->GetMotionMaster()->MoveIdle();
+        m_creature->CastStop(true);
+        m_creature->AttackStop();
+        if (!m_creature->IsInUnitState(UNIT_ACTION_HOME))
+            m_creature->GetMotionMaster()->MoveTargetedHome();
     }
 }
 
@@ -452,8 +453,9 @@ void PetAI::UpdateAI(const uint32 diff)
         else if (sWorld.getConfig(CONFIG_BOOL_PET_ADVANCED_AI) && IsInCombat() && m_creature->getVictim() && m_creature->getVictim()->IsCrowdControlled())  // Stop attack if target under CC effect
         {
             m_savedTargetGuid = m_creature->getVictim()->GetObjectGuid();
-            m_creature->InterruptNonMeleeSpells(false);
-            _stopAttack();
+            m_creature->InterruptSpell(CURRENT_GENERIC_SPELL,true);
+            if (!m_creature->IsNonMeleeSpellCasted(false, false, true))
+                _stopAttack();
             return;
         }
         else if (m_creature->IsStopped() || meleeReach)
@@ -506,18 +508,27 @@ void PetAI::UpdateAI(const uint32 diff)
                 m_attackDistanceRecheckTimer -= diff;
         }
     }
-    else if (owner && m_creature->GetCharmInfo())
+    else if (owner && owner->IsInCombat())
     {
-        if (owner->isInCombat() && !(m_creature->GetCharmInfo()->HasState(CHARM_STATE_REACT,REACT_PASSIVE) || m_creature->GetCharmInfo()->HasState(CHARM_STATE_COMMAND,COMMAND_STAY)))
+        switch (m_creature->GetCharmState(CHARM_STATE_REACT))
         {
-            AttackStart(owner->getAttackerForHelper());
-        }
-        else if(m_creature->GetCharmInfo()->HasState(CHARM_STATE_COMMAND,COMMAND_FOLLOW))
-        {
-            if (!m_creature->hasUnitState(UNIT_STAT_FOLLOW) )
+            case REACT_DEFENSIVE:
             {
-                m_creature->GetMotionMaster()->MoveFollow(owner,PET_FOLLOW_DIST, m_creature->IsPet() ? ((Pet*)m_creature)->GetPetFollowAngle() : PET_FOLLOW_ANGLE);
+                if (!m_creature->getVictim() 
+                    || !m_creature->getVictim()->isAlive() 
+                    || (owner->getVictim() != m_creature->getVictim() && owner->getVictim()->isAlive()))
+                    AttackStart(owner->getAttackerForHelper());
+                break;
             }
+            case REACT_AGGRESSIVE:
+            {
+                if (!m_creature->getVictim() || !m_creature->getVictim()->isAlive())
+                    AttackStart(owner->getAttackerForHelper());
+                break;
+            }
+            case REACT_PASSIVE:
+            default:
+                break;
         }
     }
 
@@ -822,7 +833,7 @@ void PetAI::UpdateAllies()
         m_AllySet.insert(owner->GetObjectGuid());
 }
 
-void PetAI::AttackedBy(Unit *attacker)
+void PetAI::AttackedBy(Unit* attacker)
 {
     if (m_AIType == PET_AI_SLACKER)
     {

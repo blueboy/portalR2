@@ -91,12 +91,49 @@ struct AreaTrigger
     uint32 achiev0;
     uint32 achiev1;
     uint32 combatMode;
-    std::string requiredFailedText;
     uint32 target_mapId;
     float  target_X;
     float  target_Y;
     float  target_Z;
     float  target_Orientation;
+
+    // Operators
+    bool IsMinimal() const { return (requiredLevel == 0 
+                                    && requiredItem == 0 
+                                    && requiredItem2 == 0 
+                                    && heroicKey == 0 
+                                    && heroicKey2 == 0 
+                                    && requiredQuestA == 0 
+                                    && requiredQuestHeroicA == 0
+                                    && requiredQuestH == 0 
+                                    && requiredQuestHeroicH == 0
+                                    && minGS == 0 
+                                    && maxGS == 0
+                                    && achiev0 == 0 
+                                    && achiev1 == 0);
+                                    }
+
+    bool IsLessOrEqualThan(AreaTrigger const* l) const      // Expected to have same map
+    {
+        MANGOS_ASSERT(target_mapId == l->target_mapId);
+        return (requiredLevel <= l->requiredLevel
+                && requiredItem <= l->requiredItem
+                && requiredItem2 <= l->requiredItem2
+                && heroicKey <= l->heroicKey
+                && heroicKey2 <= l->heroicKey2
+                && requiredQuestA <= l->requiredQuestA
+                && requiredQuestHeroicA <= l->requiredQuestHeroicA
+                && requiredQuestH <= l->requiredQuestH
+                && requiredQuestHeroicH <= l->requiredQuestHeroicH
+                && minGS <= l->minGS
+                && maxGS <= l->maxGS
+                && achiev0 <= l->achiev0
+                && achiev1 <= l->achiev1
+                );
+    }
+
+    bool operator <= (AreaTrigger const* l) const { return IsLessOrEqualThan(l); }
+
 };
 
 typedef std::map<uint32/*player guid*/,uint32/*instance*/> CellCorpseSet;
@@ -463,6 +500,7 @@ enum ConditionType
                                                             // True if player has skill skill_id and skill less than (and not equal) skill_value (for skill_value > 1)
                                                             // If skill_value == 1, then true if player has not skill skill_id
     CONDITION_REPUTATION_RANK_MAX   = 30,                   // faction_id   max_rank
+    CONDITION_COMPLETED_ENCOUNTER   = 31,                   // encounter_id encounter_id2       encounter_id[2] = DungeonEncounter(dbc).id (if value2 provided it will return value1 OR value2)
 };
 
 class PlayerCondition
@@ -663,8 +701,8 @@ class ObjectMgr
             return NULL;
         }
 
-        AreaTrigger const* GetGoBackTrigger(uint32 Map) const;
-        AreaTrigger const* GetMapEntranceTrigger(uint32 Map) const;
+        AreaTrigger const* GetGoBackTrigger(uint32 mapId) const;
+        AreaTrigger const* GetMapEntranceTrigger(uint32 mapId) const;
 
         RepRewardRate const* GetRepRewardRate(uint32 factionId) const
         {
@@ -1197,6 +1235,10 @@ class ObjectMgr
         uint32 GetModelForRace(uint32 sourceModelId, uint32 racemask);
     protected:
 
+        // initial free low guid for selected guid type for map local guids
+        uint32 m_FirstTemporaryCreatureGuid;
+        uint32 m_FirstTemporaryGameObjectGuid;
+
         // first free id for selected id type
         IdGenerator<uint32> m_ArenaTeamIds;
         IdGenerator<uint32> m_AuctionIds;
@@ -1204,10 +1246,6 @@ class ObjectMgr
         IdGenerator<uint32> m_GuildIds;
         IdGenerator<uint32> m_MailIds;
         IdGenerator<uint32> m_PetNumbers;
-
-        // initial free low guid for selected guid type for map local guids
-        uint32 m_FirstTemporaryCreatureGuid;
-        uint32 m_FirstTemporaryGameObjectGuid;
 
         // guids from reserved range for use in .npc add/.gobject add commands for adding new static spawns (saved in DB) from client.
         ObjectGuidGenerator<HIGHGUID_UNIT>        m_StaticCreatureGuids;

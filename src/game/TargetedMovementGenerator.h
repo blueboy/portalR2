@@ -29,6 +29,8 @@ class MANGOS_DLL_SPEC TargetedMovementGeneratorBase
     public:
         TargetedMovementGeneratorBase(Unit &target) { i_target.link(&target, this); }
         void stopFollowing() { }
+        virtual ~TargetedMovementGeneratorBase() {}
+
     protected:
         FollowerReference i_target;
 };
@@ -45,7 +47,7 @@ class MANGOS_DLL_SPEC TargetedMovementGeneratorMedium
             i_path(NULL)
         {
         }
-        ~TargetedMovementGeneratorMedium() { delete i_path; }
+        virtual ~TargetedMovementGeneratorMedium() { delete i_path; }
 
     public:
         bool Update(T &, const uint32 &);
@@ -57,7 +59,7 @@ class MANGOS_DLL_SPEC TargetedMovementGeneratorMedium
 
         Unit* GetTarget() const { return i_target.getTarget(); }
 
-        void unitSpeedChanged() { i_recalculateTravel=true; }
+        void UnitSpeedChanged() { i_recalculateTravel=true; }
         void UpdateFinalDistance(float fDistance);
         const char* Name() const { return "<TargetedMedium>"; }
 

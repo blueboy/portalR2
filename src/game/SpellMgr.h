@@ -192,7 +192,7 @@ inline bool IsSealSpell(SpellEntry const *spellInfo)
 {
     //Collection of all the seal family flags. No other paladin spell has any of those.
     return spellInfo->SpellFamilyName == SPELLFAMILY_PALADIN &&
-        spellInfo->SpellFamilyFlags.test<CF_PALADIN_SEAL_OF_COMMAND, CF_PALADIN_SEAL_OF_JUST_RIGHT, CF_PALADIN_SEAL_OF_BLOOD_MARTYR,
+        spellInfo->GetSpellFamilyFlags().test<CF_PALADIN_SEAL_OF_COMMAND, CF_PALADIN_SEAL_OF_JUST_RIGHT, CF_PALADIN_SEAL_OF_BLOOD_MARTYR,
             CF_PALADIN_SEAL_OF_CORRUPT_VENGE, CF_PALADIN_SEAL_OF_LIGHT, CF_PALADIN_SEAL_OF_WISDOM, CF_PALADIN_SEAL_OF_RIGHTEOUSNESS>() &&
         // avoid counting target triggered effect as seal for avoid remove it or seal by it.
         spellInfo->EffectImplicitTargetA[EFFECT_INDEX_0] == TARGET_SELF;
@@ -202,7 +202,7 @@ inline bool IsElementalShield(SpellEntry const *spellInfo)
 {
     // family flags 10 (Lightning), 42 (Earth), 37 (Water), proc shield from T2 8 pieces bonus
     return spellInfo->SpellFamilyName == SPELLFAMILY_SHAMAN &&
-        (spellInfo->SpellFamilyFlags.test<CF_SHAMAN_LIGHTNING_SHIELD, CF_SHAMAN_WATER_SHIELD, CF_SHAMAN_EARTH_SHIELD>() || spellInfo->Id == 23552);
+        (spellInfo->GetSpellFamilyFlags().test<CF_SHAMAN_LIGHTNING_SHIELD, CF_SHAMAN_WATER_SHIELD, CF_SHAMAN_EARTH_SHIELD>() || spellInfo->Id == 23552);
 }
 
 inline bool IsExplicitDiscoverySpell(SpellEntry const *spellInfo)
@@ -334,6 +334,9 @@ inline bool IsSpellWithCasterSourceTargetsOnly(SpellEntry const* spellInfo)
 {
     for(int i = 0; i < MAX_EFFECT_INDEX; ++i)
     {
+        if (spellInfo->Effect[i] == SPELL_EFFECT_NONE)
+            continue;
+
         uint32 targetA = spellInfo->EffectImplicitTargetA[i];
         if (targetA && !IsCasterSourceTarget(targetA))
             return false;
@@ -346,6 +349,58 @@ inline bool IsSpellWithCasterSourceTargetsOnly(SpellEntry const* spellInfo)
             return false;
     }
     return true;
+}
+
+inline bool IsTargetExplicitRequired(uint32 target)
+{
+    switch (target)
+    {
+        case TARGET_NONE:
+        case TARGET_IN_FRONT_OF_CASTER:
+        case TARGET_IN_FRONT_OF_CASTER_30:
+        case TARGET_GO_IN_FRONT_OF_CASTER_90:
+        //case TARGET_AREAEFFECT_INSTANT:
+        //case TARGET_AREAEFFECT_CUSTOM:
+        //case TARGET_INNKEEPER_COORDINATES:
+        //case TARGET_LARGE_FRONTAL_CONE:
+        //case TARGET_LEAP_FORWARD:
+        //case TARGET_NARROW_FRONTAL_CONE:
+        //case TARGET_AREAEFFECT_PARTY_AND_CLASS:
+        //case TARGET_DIRECTLY_FORWARD:
+        //case TARGET_RANDOM_NEARBY_LOC:
+        //case TARGET_RANDOM_CIRCUMFERENCE_POINT:
+        //case TARGET_DEST_RADIUS:
+            return false;
+        default:
+            break;
+    }
+    return true;
+}
+
+inline bool IsEffectRequiresTarget(SpellEntry const* spellInfo, SpellEffectIndex i)
+{
+    switch(spellInfo->Effect[i])
+    {
+        case SPELL_EFFECT_NONE:
+            return false;
+
+        // this - hack for current mangos operate state with spells    
+        case SPELL_EFFECT_DUMMY:
+            break;
+
+        case SPELL_EFFECT_SEND_EVENT:
+        default:
+            return IsTargetExplicitRequired(spellInfo->EffectImplicitTargetA[i]) || IsTargetExplicitRequired(spellInfo->EffectImplicitTargetB[i]);
+    }
+    return true;
+}
+
+inline bool IsSpellRequiresTarget(SpellEntry const* spellInfo)
+{
+    for (int i = 0; i < MAX_EFFECT_INDEX; ++i)
+        if (IsEffectRequiresTarget(spellInfo, SpellEffectIndex(i)))
+            return true;
+    return false;
 }
 
 inline bool IsPointEffectTarget( Targets target )
@@ -526,7 +581,7 @@ inline bool NeedsComboPoints(SpellEntry const* spellInfo)
 
 inline SpellSchoolMask GetSpellSchoolMask(SpellEntry const* spellInfo)
 {
-    return SpellSchoolMask(spellInfo->SchoolMask);
+    return spellInfo ? SpellSchoolMask(spellInfo->SchoolMask) : SPELL_SCHOOL_MASK_NORMAL;
 }
 
 inline uint32 GetSpellMechanicMask(SpellEntry const* spellInfo, uint32 effectMask)
@@ -873,7 +928,7 @@ struct SpellLinkedEntry
 {
     uint32 spellId;
     uint32 linkedId;
-    uint32 type;
+    SpellLinkedType type;
     uint32 effectMask;
 };
 
@@ -1407,6 +1462,7 @@ class SpellMgr
         void LoadPetDefaultSpells();
         void LoadSpellAreas();
         void LoadSkillDiscoveryTable();
+        void LoadSpellDbc();
 
     private:
         bool LoadPetDefaultSpells_helper(CreatureInfo const* cInfo, PetDefaultSpellsEntry& petDefSpells);

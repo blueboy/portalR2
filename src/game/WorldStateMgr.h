@@ -25,7 +25,11 @@
 
 class Player;
 
-#define WORLDSTATES_BEGIN 999
+enum WorldStatesLimits
+{
+    WORLDSTATES_BEGIN                           = 1000,
+    WORLDSTATES_END                             = 9999,
+};
 
 enum WorldStateType
 {
@@ -53,15 +57,26 @@ enum WorldStateFlags
     WORLD_STATE_FLAG_UPDATED                    = 4,
     WORLD_STATE_FLAG_DELETED                    = 7,
     // 1 byte - dynamic states
+    WORLD_STATE_FLAG_TRISTATE_NEUTRAL           = 8,
+    WORLD_STATE_FLAG_TRISTATE_ALLIANCE          = 9,
+    WORLD_STATE_FLAG_TRISTATE_HORDE             = 10,
     // 2 byte - static states
     WORLD_STATE_FLAG_INITIAL_STATE              = 16,
     WORLD_STATE_FLAG_PASSIVE_AT_CREATE          = 17,
+    WORLD_STATE_FLAG_NOT_EXPIREABLE             = 18,
     // 3 byte - custom states
     WORLD_STATE_FLAG_CUSTOM_FORMAT              = 24,
     WORLD_STATE_FLAG_CUSTOM_GLOBAL              = 25,
     WORLD_STATE_FLAG_CUSTOM_HIDDEN              = 26,
     WORLD_STATE_FLAG_CUSTOM                     = 31,
-    WORLD_STATE_FLAG_MAX
+    WORLD_STATE_FLAG_MAX,
+};
+
+enum WorldStateFlagMask
+{
+    WORLD_STATE_FLAG_MASK_INITED                = 1 << WORLD_STATE_FLAG_INITIALIZED | 1 << WORLD_STATE_FLAG_ACTIVE | 1 << WORLD_STATE_FLAG_UPDATED,
+    WORLD_STATE_FLAG_MASK_TRISTATE              = 1 << WORLD_STATE_FLAG_TRISTATE_HORDE | 1 << WORLD_STATE_FLAG_TRISTATE_ALLIANCE | 1 << WORLD_STATE_FLAG_TRISTATE_NEUTRAL,
+    WORLD_STATE_FLAG_MASK_NOT_EXPIRE            = 1 << WORLD_STATE_FLAG_NOT_EXPIREABLE | 1 << WORLD_STATE_FLAG_INITIAL_STATE,
 };
 
 enum WorldStateInitialValueType
@@ -91,11 +106,14 @@ enum GameObjectWorldState
     OBJECT_STATE_LAST_INDEX          = OBJECT_STATE_ALLIANCE_DESTROY,
 };
 
+typedef std::set<uint32> WorldStatesLinkedSet;
+
 struct WorldStateTemplate
 {
     // Constructor for use with DB templates data
-    WorldStateTemplate(uint32 _stateid, uint32 _type, uint32 _condition, uint32 _flags, uint32 _default, uint32 _linked)
-        : m_stateId(_stateid), m_stateType(_type), m_condition(_condition), m_flags(_flags), m_defaultValue(_default), m_linkedId(_linked)
+    WorldStateTemplate(uint32 _stateid, uint32 _type, uint32 _condition, uint32 _flags, uint32 _default, uint32 _linked, uint32 phasemask)
+        : m_stateId(_stateid), m_stateType(_type), m_condition(_condition), m_flags(_flags), m_defaultValue(_default), m_linkedId(_linked), 
+        m_phasemask(phasemask)
     {
     };
 
@@ -114,30 +132,30 @@ struct WorldStateTemplate
                                                 // Area id (0 for world, some instance and BG states)
     uint32             const m_flags;
     uint32             const m_defaultValue;    // Default value from DB (0 for DBC states)
-    uint32             const m_linkedId;        // Linked (uplink) state Id
+    uint32                   m_linkedId;        // Linked (uplink) state Id
+    uint32                   m_phasemask;       // Phase mask for this template. May accumulate some DBC values.
 
-    std::vector<uint32>   m_linkedList;         // Linked (downlink) states
+    WorldStatesLinkedSet   m_linkedList;        // Linked (downlink) states
 
     bool               HasFlag(WorldStateFlags flag) const { return (m_flags & (1 << flag)); };
 };
 
 typedef std::multimap<uint32 /* state id */, WorldStateTemplate>  WorldStateTemplateMap;
 typedef std::pair<WorldStateTemplateMap::const_iterator,WorldStateTemplateMap::const_iterator> WorldStateTemplateBounds;
-typedef std::multimap<uint32 /* uplink state id */, uint32 /* downlink state id */> WorldStatesLinkHash;
 
 struct WorldState
 {
     public:
     // For create new state
     WorldState(WorldStateTemplate const* _state, uint32 _instance) 
-        : m_pState(_state), m_instanceId(_instance), m_stateId(m_pState->m_stateId), m_type(m_pState->m_stateType)
+        : m_pState(_state), m_stateId(m_pState->m_stateId), m_instanceId(_instance), m_type(m_pState->m_stateType)
     {
         Initialize();
     }
 
     // For load
     WorldState(WorldStateTemplate const* _state, uint32 _instance, uint32 _flags, uint32 _value, time_t _renewtime) 
-        : m_pState(_state), m_instanceId(_instance), m_flags(_flags), m_value(_value), m_renewTime(_renewtime), m_stateId(m_pState->m_stateId), m_type(m_pState->m_stateType)
+        : m_pState(_state), m_stateId(m_pState->m_stateId), m_instanceId(_instance), m_type(m_pState->m_stateType), m_flags(_flags), m_value(_value), m_renewTime(_renewtime)
     {
         m_linkedGuid.Clear();
         m_clientGuids.clear();
@@ -146,14 +164,14 @@ struct WorldState
 
     // For load custom state
     WorldState(uint32 _stateid, uint32 _instance, uint32 _flags, uint32 _value, time_t _renewtime) 
-        : m_pState(NULL), m_stateId(_stateid), m_instanceId(_instance), m_flags(_flags), m_value(_value), m_renewTime(_renewtime), m_type(WORLD_STATE_TYPE_CUSTOM)
+        : m_pState(NULL), m_stateId(_stateid), m_instanceId(_instance), m_type(WORLD_STATE_TYPE_CUSTOM), m_flags(_flags), m_value(_value), m_renewTime(_renewtime)
     {
         Initialize();
     }
 
     // For create new custom state
     WorldState(uint32 _stateid, uint32 _instance, uint32 value) 
-        : m_pState(NULL), m_stateId(_stateid), m_instanceId(_instance), m_value(value), m_type(WORLD_STATE_TYPE_CUSTOM)
+        : m_pState(NULL), m_stateId(_stateid), m_instanceId(_instance), m_type(WORLD_STATE_TYPE_CUSTOM), m_value(value)
     {
         Initialize();
     }
@@ -173,12 +191,14 @@ struct WorldState
             m_condition = m_pState->m_condition;
             m_flags     = m_pState->m_flags;
             m_value     = m_pState->m_defaultValue;
+            m_phasemask = m_pState->m_phasemask;
         }
         else
         {
             m_condition = 0;
             m_flags     = 0;
             m_value     = 0;
+            m_phasemask = PHASEMASK_NONE;
             AddFlag(WORLD_STATE_FLAG_CUSTOM);
         };
         Renew();
@@ -191,9 +211,11 @@ struct WorldState
             m_condition = m_pState->m_condition;
             m_flags     = m_pState->m_flags;
             m_value     = m_pState->m_defaultValue;
+            m_phasemask = m_pState->m_phasemask;
         }
         else
         {
+            m_phasemask = PHASEMASK_NONE;
             AddFlag(WORLD_STATE_FLAG_CUSTOM);
         }
     }
@@ -211,13 +233,19 @@ struct WorldState
 
     GuidSet const& GetClients()                  { return m_clientGuids; };
 
-    // Linked operations
-    ObjectGuid const& GetLinkedGuid()            { return m_linkedGuid;};
+    // Linked Guid operations
+    ObjectGuid const& GetLinkedGuid()      const { return m_linkedGuid;};
     void              SetLinkedGuid(ObjectGuid const& guid)    { m_linkedGuid = guid;};
 
     bool IsExpired() const;
 
-    WorldStateTemplate const* GetTemplate() { return m_pState; }
+    WorldStateTemplate const* GetTemplate() const { return m_pState; }
+
+    // Linked state wrappers
+    bool HasUpLink()   const { return GetTemplate() ? GetTemplate()->m_linkedId != 0 : false; };
+    bool HasDownLink() const { return GetTemplate() ? !GetTemplate()->m_linkedList.empty() : false; };
+    bool HasDownLink(uint32 stateId) const { return GetTemplate() ? (GetTemplate()->m_linkedList.find(stateId) != GetTemplate()->m_linkedList.end()) : false; };
+    WorldStatesLinkedSet const* GetLinkedSet() const { return GetTemplate() ? &GetTemplate()->m_linkedList : NULL; };
 
     void AddFlag(WorldStateFlags flag)    { m_flags |= (1 << flag); };
     void RemoveFlag(WorldStateFlags flag) { m_flags &= ~(1 << flag); };
@@ -229,6 +257,7 @@ struct WorldState
     uint32 const& GetInstance()  const { return m_instanceId; }
     uint32 const& GetFlags()     const { return m_flags; }
     time_t const& GetRenewTime() const { return m_renewTime; }
+    uint32 const& GetPhaseMask() const { return m_phasemask; }
 
     uint32 const& GetValue()     const { return m_value; }
     void          SetValue(uint32 value)
@@ -256,6 +285,7 @@ struct WorldState
     time_t                             m_renewTime;     // time of last renew
     ObjectGuid                         m_linkedGuid;    // Guid of GO/creature/etc, which linked to WorldState (CapturePoint mostly)
     GuidSet                            m_clientGuids;   // List of player Guids, wich already received this WorldState update
+    uint32                             m_phasemask;     // Phase mask for this state
 };
 
 typedef std::multimap<uint32 /* state id */, WorldState>   WorldStateMap;
@@ -292,9 +322,6 @@ class MANGOS_DLL_DECL WorldStateMgr
         void CreateInstanceState(uint32 mapId, uint32 instanceId);
         void DeleteInstanceState(uint32 mapId, uint32 instanceId);
 
-        // Methods for digging current states (need remove after finish alfa state)
-        void SaveToTemplate(WorldStateType type, uint32 state, uint32 value, uint32 data);
-
         // Cleanup states
         void Update();
 
@@ -304,23 +331,24 @@ class MANGOS_DLL_DECL WorldStateMgr
         // WorldState operations
         WorldState const* CreateWorldState(WorldStateTemplate const* tmpl, uint32 instanceId, uint32 value = UINT32_MAX);
         WorldState const* CreateWorldState(uint32 stateId, uint32 instanceId, uint32 value = UINT32_MAX);
-        WorldState const* GetWorldState(uint32 stateId, uint32 instanceId, uint32 type = WORLD_STATE_TYPE_MAX /*used in special states only*/);
+        WorldState const* GetWorldState(uint32 stateId, uint32 instanceId, WorldStateType type, uint32 condition);
+        WorldState const* GetWorldState(uint32 stateId, uint32 instanceId, Player* player = NULL);
+        WorldState const* GetWorldState(WorldStateTemplate const* tmpl, uint32 instanceId);
         void DeleteWorldState(WorldState* state);
-        WorldStateTemplate const* FindTemplate(uint32 stateId, uint32 type = WORLD_STATE_TYPE_MAX, uint32 condition = 0);
+        WorldStateTemplate const* FindTemplate(uint32 stateId, uint32 type = WORLD_STATE_TYPE_MAX, uint32 condition = 0, uint32 linkedId = 0);
 
         // External WorldState operations
         uint32 GetWorldStateValue(uint32 stateId);
         uint32 GetWorldStateValueFor(Player* player, uint32 stateId);
         uint32 GetWorldStateValueFor(Map* map, uint32 stateId);
+        uint32 GetWorldStateValueFor(uint32 zoneId, uint32 stateId);
         uint32 GetWorldStateValueFor(uint32 mapId, uint32 instanceId, uint32 zoneId, uint32 areaId, uint32 stateId);
         uint32 GetWorldStateValueFor(WorldObject* object, uint32 stateId);
 
         void   SetWorldStateValueFor(Player* player, uint32 stateId, uint32 value);
         void   SetWorldStateValueFor(Map* map, uint32 stateId, uint32 value);
         void   SetWorldStateValueFor(WorldObject* object, uint32 stateId, uint32 value);
-
-        // Method for initial (per-script) WorldState filling (need move all updates like this in DB!)
-        void FillInitialWorldState(uint32 stateId, uint32 value, WorldStateType type, uint32 data = 0 /*zone id*/);
+        void   SetWorldStateValueFor(uint32 zoneId, uint32 stateId, uint32 value);
 
         WorldStateSet GetWorldStates(uint32 flags) { return GetWorldStatesFor(NULL, flags); };
         WorldStateSet GetWorldStatesFor(Player* player, WorldStateFlags flag) { return GetWorldStatesFor(player, (1 << flag)); };
@@ -332,9 +360,6 @@ class MANGOS_DLL_DECL WorldStateMgr
         WorldStateSet GetInstanceStates(uint32 mapId, uint32 instanceId, uint32 flags = 0, bool full = false);
         WorldStateSet GetInitWorldStates(uint32 mapId, uint32 instanceId, uint32 zoneId, uint32 areaId);
 
-        bool HasDownLinkedWorldStates(uint32 stateId) const { return m_worldStateLink.find(stateId) != m_worldStateLink.end(); };
-        WorldStateSet GetDownLinkedWorldStates(WorldState const* state);
-
         bool          IsFitToCondition(Player* player, WorldState const* state);
         bool          IsFitToCondition(Map* map, WorldState const* state);
         bool          IsFitToCondition(uint32 mapId, uint32 instanceId, uint32 zoneId, uint32 areaId, WorldState const* state);
@@ -343,8 +368,12 @@ class MANGOS_DLL_DECL WorldStateMgr
         void AddWorldStateFor(Player* player, uint32 stateId, uint32 instanceId);
         void RemoveWorldStateFor(Player* player, uint32 stateId, uint32 instanceId);
 
-        void RemovePendingWorldStateFor(Player* player, uint32 mapId, uint32 instanceId, uint32 zoneId, uint32 areaId);
-        void SendPendingWorldStateFor(Player* player, uint32 mapId, uint32 instanceId, uint32 zoneId, uint32 areaId);
+        WorldStateSet GetDownLinkedWorldStates(WorldState const* state);
+        WorldState const* GetUpLinkWorldState(WorldState const* state);
+
+        static bool CheckWorldState(uint32 stateId)  { return (stateId >= WORLDSTATES_BEGIN) && (stateId <= WORLDSTATES_END); };
+
+        uint32 GetMapIdByZoneId(uint32 zoneId) const;
 
     private:
         // multithread locking
@@ -355,7 +384,6 @@ class MANGOS_DLL_DECL WorldStateMgr
 
         WorldStateTemplateMap   m_worldStateTemplates;    // templates storage
         WorldStateMap           m_worldState;             // data storage
-        WorldStatesLinkHash     m_worldStateLink;         // Links map for speedup linked states search
         LockType                i_lock;
 };
 

@@ -24,6 +24,7 @@
 #define __WORLD_H
 
 #include "Common.h"
+#include "LockedQueue.h"
 #include "Timer.h"
 #include "Policies/Singleton.h"
 #include "SharedDefines.h"
@@ -358,6 +359,14 @@ enum eConfigBoolValues
     CONFIG_BOOL_ARENA_QUEUE_ANNOUNCER_JOIN,
     CONFIG_BOOL_ARENA_QUEUE_ANNOUNCER_EXIT,
     CONFIG_BOOL_ARENA_QUEUE_ANNOUNCER_START,
+    CONFIG_BOOL_OUTDOORPVP_SI_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_EP_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_HP_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_ZM_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_TF_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_NA_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_GH_ENABLED,
+    CONFIG_BOOL_OUTDOORPVP_WG_ENABLED,
     CONFIG_BOOL_KICK_PLAYER_ON_BAD_PACKET,
     CONFIG_BOOL_STATS_SAVE_ONLY_ON_LOGOUT,
     CONFIG_BOOL_CLEAN_CHARACTER_DB,
@@ -384,6 +393,8 @@ enum eConfigBoolValues
     CONFIG_BOOL_RESET_DUEL_AREA_ENABLED,
     CONFIG_BOOL_PET_ADVANCED_AI,
     CONFIG_BOOL_RESILENCE_ALTERNATIVE_CALCULATION,
+    CONFIG_BOOL_BLINK_ANIMATION_TYPE,
+    CONFIG_BOOL_FACTION_AND_RACE_CHANGE_WITHOUT_RENAMING,
     CONFIG_BOOL_VALUE_COUNT
 };
 
@@ -489,6 +500,8 @@ class World
 
         World();
         ~World();
+
+        void CleanupsBeforeStop();
 
         WorldSession* FindSession(uint32 id) const;
         void AddSession(WorldSession *s);
@@ -643,6 +656,10 @@ class World
         void setDuelResetEnableAreaIds(const char* areas);
         bool IsAreaIdEnabledDuelReset(uint32 areaId);
 
+        // Disable dungeons for LFG system
+        void setDisabledMapIdForDungeonFinder(const char* areas);
+        bool IsDungeonMapIdDisable(uint32 mapId);
+
     protected:
         void _UpdateGameTime();
 
@@ -740,10 +757,12 @@ class World
         std::string m_CreatureEventAIVersion;
 
         // World locking for global (not-in-map) objects.
-        ObjectLockType   i_lock[MAP_LOCK_TYPE_MAX];
+        mutable ObjectLockType   i_lock[MAP_LOCK_TYPE_MAX];
 
         // reset duel system
         std::set<uint32> areaEnabledIds; //set of areaIds where is enabled the Duel reset system
+        // Disable dungeons for LFG system
+        std::set<uint32> disabledMapIdForDungeonFinder; // set of MapIds which are disabled for DungeonFinder
 
 };
 

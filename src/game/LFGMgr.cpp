@@ -247,6 +247,24 @@ bool LFGMgr::IsRandomDungeon(LFGDungeonEntry const*  dungeon)
     return dungeon->type == LFG_TYPE_RANDOM_DUNGEON;
 }
 
+bool LFGMgr::CheckWorldEvent(LFGDungeonEntry const* dungeon)
+{
+    switch (dungeon->ID)
+    {
+        case 288:                   // Apothecary Hummel <Crown Chemical Co.>
+            return sGameEventMgr.IsActiveHoliday(HOLIDAY_LOVE_IS_IN_THE_AIR);
+        case 287:                   // Coren Direbrew
+            return sGameEventMgr.IsActiveHoliday(HOLIDAY_BREWFEST);
+        case 286:                   // Ahune <The Frost Lord>
+            return sGameEventMgr.IsActiveHoliday(HOLIDAY_FIRE_FESTIVAL);
+        case 285:                   // Headless Horseman
+            return sGameEventMgr.IsActiveHoliday(HOLIDAY_HALLOWS_END);
+        default:
+            break;
+    }
+    return false;
+}
+
 void LFGMgr::Join(Player* pPlayer)
 {
     if (!sWorld.getConfig(CONFIG_BOOL_LFG_ENABLE) && !sWorld.getConfig(CONFIG_BOOL_LFR_ENABLE))
@@ -680,6 +698,9 @@ LFGLockStatusType LFGMgr::GetPlayerLockStatus(Player* pPlayer, LFGDungeonEntry c
         }
     }
 
+    if (isRandom && sWorld.IsDungeonMapIdDisable(dungeon->map))
+        return LFG_LOCKSTATUS_NOT_IN_SEASON;
+
     if (dungeon->expansion > pPlayer->GetSession()->Expansion())
         return LFG_LOCKSTATUS_INSUFFICIENT_EXPANSION;
 
@@ -820,8 +841,13 @@ LFGDungeonSet LFGMgr::GetRandomDungeonsForPlayer(Player* pPlayer)
         if (LFGDungeonEntry const* dungeon = sLFGDungeonStore.LookupEntry(i))
         {
             if (dungeon &&
-                dungeon->type == LFG_TYPE_RANDOM_DUNGEON &&
+                LFGMgr::IsRandomDungeon(dungeon) &&
                 GetPlayerLockStatus(pPlayer, dungeon) == LFG_LOCKSTATUS_OK)
+                list.insert(dungeon);
+            else if (dungeon &&
+                dungeon->grouptype == LFG_GROUP_TYPE_WORLD_EVENTS  &&
+                GetPlayerLockStatus(pPlayer, dungeon) == LFG_LOCKSTATUS_OK &&
+                LFGMgr::CheckWorldEvent(dungeon))
                 list.insert(dungeon);
         }
     }
@@ -866,6 +892,7 @@ LFGDungeonEntry const* SelectDungeonFromList(LFGDungeonSet* dungeons)
 
     return NULL;
 }
+
 
 LFGDungeonEntry const* LFGMgr::GetDungeon(uint32 dungeonID)
 {
@@ -1025,16 +1052,16 @@ void LFGMgr::SendLFGRewards(Group* pGroup)
     pGroup->GetLFGGroupState()->SetState(LFG_STATE_FINISHED_DUNGEON);
     pGroup->GetLFGGroupState()->SetStatus(LFG_STATUS_SAVED);
 
-    LFGDungeonEntry const* pRealdungeon = pGroup->GetLFGGroupState()->GetDungeon();
+    LFGDungeonEntry const* dungeon = *pGroup->GetLFGGroupState()->GetDungeons()->begin();
 
-    if (!pRealdungeon)
+    if (!dungeon)
     {
         DEBUG_LOG("LFGMgr::SendLFGReward: group %u - but no realdungeon", pGroup->GetObjectGuid().GetCounter());
         return;
     }
-    else  if (pRealdungeon->type != LFG_TYPE_RANDOM_DUNGEON)
+    else  if (dungeon->type != LFG_TYPE_RANDOM_DUNGEON)
     {
-        DEBUG_LOG("LFGMgr::SendLFGReward: group %u dungeon %u is not random (%u)", pGroup->GetObjectGuid().GetCounter(), pRealdungeon->ID, pRealdungeon->type);
+        DEBUG_LOG("LFGMgr::SendLFGReward: group %u dungeon %u is not random (%u)", pGroup->GetObjectGuid().GetCounter(), dungeon->ID, dungeon->type);
         return;
     }
 
@@ -1042,7 +1069,7 @@ void LFGMgr::SendLFGRewards(Group* pGroup)
     {
         Player* pGroupMember = itr->getSource();
         if (pGroupMember && pGroupMember->IsInWorld())
-            SendLFGReward(pGroupMember, pRealdungeon);
+            SendLFGReward(pGroupMember, dungeon);
     }
 }
 

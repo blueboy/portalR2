@@ -370,9 +370,6 @@ bool AntiCheat::CheckNeeded(AntiCheatCheck checktype)
         || GetPlayer()->GetSession()->GetSecurity() > int32(sWorld.getConfig(CONFIG_UINT32_ANTICHEAT_GMLEVEL)))
         return false;
 
-    if (GetMover()->HasAuraType(SPELL_AURA_MOD_CONFUSE))
-        return false;
-
     if (!m_currentConfig->disabledZones.empty())
     {
         uint32 zone, area;
@@ -391,7 +388,7 @@ bool AntiCheat::CheckNeeded(AntiCheatCheck checktype)
         case CHECK_MOVEMENT:
             if (   GetPlayer()->GetTransport()
                 || GetPlayer()->HasMovementFlag(MOVEFLAG_ONTRANSPORT)
-                || GetPlayer()->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_CONFUSED)
+                || GetPlayer()->IsInUnitState(UNIT_ACTION_CONFUSED)
                 || GetPlayer()->IsTaxiFlying())
                 return false;
             break;
@@ -844,7 +841,7 @@ bool AntiCheat::CheckSpellFamily()
 
 bool AntiCheat::CheckSpellInbook()
 {
-    SpellEntry const* spellInfo = sSpellStore.LookupEntry(m_currentspellID);
+//    SpellEntry const* spellInfo = sSpellStore.LookupEntry(m_currentspellID);
 
     // not have spell in spellbook or spell passive and not casted by client
     if (!GetPlayer()->GetUInt16Value(PLAYER_FIELD_BYTES2, 0) == 0 ||
