@@ -287,6 +287,8 @@ class MANGOS_DLL_SPEC Pet : public Creature
         uint32 GetCreateSpellID() { return m_createSpellID; }
         bool IsInWorld() const { return ( !m_loading && !m_removed && Object::IsInWorld()); }
 
+        bool IsInEvadeMode() const override;
+
         // overwrite Creature function for name localization back to WorldObject version without localization
         const char* GetNameForLocaleIdx(int32 locale_idx) const { return WorldObject::GetNameForLocaleIdx(locale_idx); }
 
@@ -365,6 +367,14 @@ struct DoPetCastWithHelper
     uint8 cast_count;
     SpellCastTargets* targets;
     SpellEntry const* spellInfo;
+};
+
+struct AttackedByHelper
+{
+    explicit AttackedByHelper(Unit* _attacker) : attacker(_attacker)
+    {}
+    void operator()(Unit* unit) const { unit->AttackedBy(attacker); };
+    Unit* attacker;
 };
 
 typedef std::map<uint32,std::string> KnownPetNames;

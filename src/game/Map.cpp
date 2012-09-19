@@ -36,7 +36,7 @@
 #include "MapPersistentStateMgr.h"
 #include "VMapFactory.h"
 #include "MoveMap.h"
-#include "BattleGroundMgr.h"
+#include "BattleGround/BattleGroundMgr.h"
 
 Map::~Map()
 {
@@ -216,6 +216,13 @@ void Map::DeleteFromWorld(Player* pl)
     WriteGuard Guard(GetLock(MAP_LOCK_TYPE_AURAS));
 
     delete pl;
+}
+
+void Map::setUnitCell(Creature* obj)
+{
+    CellPair xy_val = MaNGOS::ComputeCellPair(obj->GetPositionX(), obj->GetPositionY());
+    Cell cell(xy_val);
+    obj->SetCurrentCell(cell);
 }
 
 void
@@ -461,6 +468,35 @@ bool Map::loaded(const GridPair &p) const
 void Map::Update(const uint32 &t_diff)
 {
     m_dyn_tree.update(t_diff);
+    uint32 loadingObjectToGridUpdateTime = WorldTimer::getMSTime();
+
+    BattleGround* bg = this->IsBattleGroundOrArena() ? ((BattleGroundMap*)this)->GetBG() : NULL;
+    while(!i_loadingObjectQueue.empty())
+    {
+        LoadingObjectQueue& loadingObject = i_loadingObjectQueue.front();
+        switch(loadingObject.objectTypeID)
+        {
+            case TYPEID_UNIT:
+            {
+                LoadObjectToGrid<Creature>(loadingObject.guid, loadingObject.grid, bg);
+                break;
+            }
+            case TYPEID_GAMEOBJECT:
+            {
+                LoadObjectToGrid<GameObject>(loadingObject.guid, loadingObject.grid, bg);
+                break;
+            }
+            default:
+                sLog.outError("loadingObject.guid = %u, loadingObject.objectTypeID = %u", loadingObject.guid, loadingObject.objectTypeID);
+                break;
+        }
+
+        i_loadingObjectQueue.pop();
+        if ((WorldTimer::getMSTime() - loadingObjectToGridUpdateTime) > 10) // Only 10ms for loading object in one tick
+            break;
+    }
+
+    UpdateEvents(t_diff);
 
     /// update worldsessions for existing players
     for(m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
@@ -660,7 +696,7 @@ Map::Remove(T *obj, bool remove)
     CellPair p = MaNGOS::ComputeCellPair(obj->GetPositionX(), obj->GetPositionY());
     if(p.x_coord >= TOTAL_NUMBER_OF_CELLS_PER_MAP || p.y_coord >= TOTAL_NUMBER_OF_CELLS_PER_MAP )
     {
-        sLog.outError("Map::Remove: Object (%s) have invalid coordinates X:%f Y:%f grid cell [%u:%u]", obj->GetObjectGuid() ? obj->GetObjectGuid().GetString().c_str() : "<no GUID>", obj->GetTypeId(), obj->GetPositionX(), obj->GetPositionY(), p.x_coord, p.y_coord);
+        sLog.outError("Map::Remove: Object (%s Type: %u) have invalid coordinates X:%f Y:%f grid cell [%u:%u]", obj->GetObjectGuid() ? obj->GetObjectGuid().GetString().c_str() : "<no GUID>", obj->GetTypeId(), obj->GetPositionX(), obj->GetPositionY(), p.x_coord, p.y_coord);
         return;
     }
 
@@ -672,10 +708,10 @@ Map::Remove(T *obj, bool remove)
     NGridType *grid = getNGrid(cell.GridX(), cell.GridY());
     MANGOS_ASSERT( grid != NULL );
 
-    if(obj->isActiveObject())
+    if (obj->isActiveObject())
         RemoveFromActive(obj);
 
-    if(remove)
+    if (remove)
         obj->CleanupsBeforeDelete();
     else
         obj->RemoveFromWorld();
@@ -686,12 +722,14 @@ Map::Remove(T *obj, bool remove)
     if (obj->GetTypeId() == TYPEID_UNIT)
         RemoveAttackersStorageFor(obj->GetObjectGuid());
 
-    if( remove )
+    if (remove)
     {
         // if option set then object already saved at this moment
         if(!sWorld.getConfig(CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY))
             obj->SaveRespawnTime();
 
+        ((Object*)obj)->RemoveFromWorld();
+        obj->ResetMap();
         // Note: In case resurrectable corpse and pet its removed from global lists in own destructor
         delete obj;
     }
@@ -1021,6 +1059,15 @@ void Map::AddObjectToRemoveList(WorldObject *obj)
 
     i_objectsToRemove.insert(obj);
     //DEBUG_LOG("Object (GUID: %u TypeId: %u ) added to removing list.",obj->GetGUIDLow(),obj->GetTypeId());
+}
+
+void Map::RemoveObjectFromRemoveList(WorldObject* obj)
+{
+    if (i_objectsToRemove.empty())
+        return;
+    std::set< WorldObject* >::const_iterator itr = i_objectsToRemove.find(obj);
+    if (itr != i_objectsToRemove.end())
+        i_objectsToRemove.erase(itr);
 }
 
 void Map::RemoveAllObjectsInRemoveList()
@@ -2271,4 +2318,55 @@ void Map::RemoveGameObjectModel(const GameObjectModel& mdl)
 bool Map::ContainsGameObjectModel(const GameObjectModel& mdl) const
 {
     return m_dyn_tree.contains(mdl);
+}
+
+template<class T> void Map::LoadObjectToGrid(uint32& guid, GridType& grid, BattleGround* bg)
+{
+    T* obj = new T;
+    if(!obj->LoadFromDB(guid, this))
+    {
+        delete obj;
+        return;
+    }
+    grid.AddGridObject(obj);
+    setUnitCell(obj);
+
+    obj->SetMap(this);
+    obj->AddToWorld();
+    if (obj->isActiveObject())
+        AddToActive(obj);
+
+    obj->GetViewPoint().Event_AddedToWorld(&grid);
+
+    if (bg)
+        bg->OnObjectDBLoad(obj);
+}
+
+WorldObjectEventProcessor* Map::GetEvents()
+{
+    return &m_Events;
+}
+
+void Map::KillAllEvents(bool force)
+{
+    WriteGuard Guard(GetLock());
+    GetEvents()->KillAllEvents(force);
+}
+
+void Map::AddEvent(BasicEvent* Event, uint64 e_time, bool set_addtime)
+{
+    WriteGuard Guard(GetLock());
+    if (set_addtime)
+        GetEvents()->AddEvent(Event, GetEvents()->CalculateTime(e_time), set_addtime);
+    else
+        GetEvents()->AddEvent(Event, e_time, set_addtime);
+}
+
+void Map::UpdateEvents(uint32 update_diff)
+{
+    {
+        ReadGuard Guard(GetLock());
+        GetEvents()->RenewEvents();
+    }
+    GetEvents()->Update(update_diff);
 }

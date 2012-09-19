@@ -21,12 +21,13 @@
 
 #include "Common.h"
 #include "ByteBuffer.h"
-#include "UpdateFields.h"
+#include "UpdateFieldFlags.h"
 #include "UpdateData.h"
 #include "ObjectGuid.h"
 #include "Camera.h"
 #include "ObjectLock.h"
 #include "SharedDefines.h"
+#include "WorldObjectEvents.h"
 
 #include <set>
 #include <string>
@@ -55,12 +56,6 @@ enum TempSummonType
     TEMPSUMMON_DEAD_OR_LOST_UNIQUENESS_DESPAWN              = 24,            // despawns when owner spawn creature this type in visible range, or by rules of TEMPSUMMON_DEAD_DESPAWN
 };
 
-enum PhaseMasks
-{
-    PHASEMASK_NORMAL   = 0x00000001,
-    PHASEMASK_ANYWHERE = 0xFFFFFFFF
-};
-
 class WorldPacket;
 class UpdateData;
 class WorldSession;
@@ -74,28 +69,93 @@ class Map;
 class UpdateMask;
 class InstanceData;
 class TerrainInfo;
-class ZoneScript;
 class Transport;
+class TransportInfo;
 
 typedef UNORDERED_MAP<Player*, UpdateData> UpdateDataMapType;
 
 struct Position
 {
     Position() : x(0.0f), y(0.0f), z(0.0f), o(0.0f) {}
-    float x, y, z, o;
+    Position(float _x, float _y, float _z, float _o) : x(_x), y(_y), z(_z), o(_o) {}
+    virtual ~Position() {};
+    union
+    {
+        float x;
+        float coord_x;
+    };
+    union
+    {
+        float y;
+        float coord_y;
+    };
+    union
+    {
+        float z;
+        float coord_z;
+    };
+    union
+    {
+        float o;
+        float orientation;
+    };
+
+    virtual bool HasMap() const { return false; };
+
+    bool operator == (Position const &pos) const
+    {
+        return ((x - pos.x < M_NULL_F)
+            && (y - pos.y < M_NULL_F)
+            && (z - pos.z < M_NULL_F));
+    }
 };
 
-struct WorldLocation
+struct WorldLocation : public Position
 {
-    uint32 mapid;
-    float coord_x;
-    float coord_y;
-    float coord_z;
-    float orientation;
-    explicit WorldLocation(uint32 _mapid = 0, float _x = 0, float _y = 0, float _z = 0, float _o = 0)
-        : mapid(_mapid), coord_x(_x), coord_y(_y), coord_z(_z), orientation(_o) {}
+    // mapid = -1 for not initialized WorldLocation
+    int32     mapid;
+    uint32    instance;
+
+    // assume 0 as "current realm"
+    uint32    realmid;
+
+    WorldLocation()
+        : Position(), mapid(-1), instance(0), realmid(0)
+    {}
+
+    WorldLocation(uint32 _mapid, float _x, float _y, float _z, float _o = 0)
+        : Position(_x, _y, _z, _o), mapid(_mapid), instance(0), realmid(0)
+    {}
+
+    WorldLocation(uint32 _mapid, uint32 _instance, uint32 _realmid)
+        : Position(), mapid(_mapid), instance(_instance), realmid(_realmid)
+    {}
+
+    WorldLocation(float _x, float _y, float _z, float _o, uint32 _mapid, uint32 _instance, uint32 _realmid)
+        : Position(_x, _y, _z, _o), mapid(_mapid), instance(_instance), realmid(_realmid)
+    {}
+
     WorldLocation(WorldLocation const &loc)
-        : mapid(loc.mapid), coord_x(loc.coord_x), coord_y(loc.coord_y), coord_z(loc.coord_z), orientation(loc.orientation) {}
+        : Position(loc.coord_x, loc.coord_y, loc.coord_z, loc.orientation), mapid(loc.mapid), instance(loc.instance), realmid(loc.realmid)
+    {}
+
+    ~WorldLocation() {};
+
+    bool operator == (WorldLocation const &loc) const
+    {
+        return (realmid    == loc.realmid
+            && mapid       == loc.mapid
+            && instance    == loc.instance
+            && (coord_x - loc.coord_x < M_NULL_F)
+            && (coord_y - loc.coord_y < M_NULL_F)
+            && (coord_z - loc.coord_z < M_NULL_F));
+    }
+
+    bool HasMap() const override
+    {
+        return mapid >= 0;
+    }
+    Position const& GetPosition() { return *this; };
 };
 
 
@@ -118,6 +178,24 @@ class WorldUpdateCounter
 
     private:
         uint32 m_tmStart;
+};
+
+class Object;
+struct UpdateFieldData
+{
+    public:
+        UpdateFieldData(Object const* object, Player* target);
+        bool IsUpdateNeeded(uint16 fieldIndex, uint32 fieldNotifyFlags) const { return HasFlags(fieldIndex, fieldNotifyFlags) || (HasFlags(fieldIndex, UF_FLAG_SPECIAL_INFO) && m_hasSpecialInfo); }
+        bool IsUpdateFieldVisible(uint16 fieldIndex) const;
+    private:
+        inline bool HasFlags(uint16 fieldIndex, uint32 flags) const { return m_flags[fieldIndex] & flags; }
+
+        uint32* m_flags;
+        bool m_isSelf;
+        bool m_isOwner;
+        bool m_isItemOwner;
+        bool m_hasSpecialInfo;
+        bool m_isPartyMember;
 };
 
 class MANGOS_DLL_SPEC Object
@@ -171,6 +249,9 @@ class MANGOS_DLL_SPEC Object
         virtual void BuildUpdateData(UpdateDataMapType& update_players);
         void MarkForClientUpdate();
         void SendForcedObjectUpdate();
+
+        void SetFieldNotifyFlag(uint16 flag) { m_fieldNotifyFlags |= flag; }
+        void RemoveFieldNotifyFlag(uint16 flag) { m_fieldNotifyFlags &= ~flag; }
 
         void BuildValuesUpdateBlockForPlayer( UpdateData *data, Player *target ) const;
         void BuildOutOfRangeUpdateBlock( UpdateData *data ) const;
@@ -375,9 +456,8 @@ class MANGOS_DLL_SPEC Object
         void _Create(uint32 guidlow, uint32 entry, HighGuid guidhigh) { _Create(ObjectGuid(guidhigh, entry, guidlow)); }
         void _Create(ObjectGuid guid);
 
-        virtual void _SetUpdateBits(UpdateMask *updateMask, Player *target) const;
-
-        virtual void _SetCreateBits(UpdateMask *updateMask, Player *target) const;
+        void _SetUpdateBits(UpdateMask* updateMask, Player* target) const;
+        void _SetCreateBits(UpdateMask* updateMask, Player* target) const;
 
         void BuildMovementUpdate(ByteBuffer * data, uint16 updateFlags) const;
         void BuildValuesUpdate(uint8 updatetype, ByteBuffer *data, UpdateMask *updateMask, Player *target ) const;
@@ -398,6 +478,7 @@ class MANGOS_DLL_SPEC Object
         uint32 *m_uint32Values_mirror;
 
         uint16 m_valuesCount;
+        uint16 m_fieldNotifyFlags;
 
         bool m_objectUpdated;
 
@@ -449,6 +530,10 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         virtual void Update(uint32 /*update_diff*/, uint32 /*time_diff*/) {}
 
         void _Create(ObjectGuid guid, uint32 phaseMask);
+
+        TransportInfo* GetTransportInfo() const { return m_transportInfo; }
+        bool IsBoarded() const { return m_transportInfo != NULL; }
+        void SetTransportInfo(TransportInfo* transportInfo) { m_transportInfo = transportInfo; }
 
         void Relocate(float x, float y, float z, float orientation);
         void Relocate(float x, float y, float z);
@@ -583,6 +668,7 @@ class MANGOS_DLL_SPEC WorldObject : public Object
 
         virtual void SaveRespawnTime() {}
         void AddObjectToRemoveList();
+        void RemoveObjectFromRemoveList();
 
         void UpdateObjectVisibility();
         virtual void UpdateVisibilityAndView();             // update visibility for object and object for all around
@@ -602,9 +688,6 @@ class MANGOS_DLL_SPEC WorldObject : public Object
 
         //obtain terrain data for map where this object belong...
         TerrainInfo const* GetTerrain() const;
-
-        void SetZoneScript();
-        ZoneScript * GetZoneScript() const { return m_zoneScript; }
 
         void AddToClientUpdateList();
         void RemoveFromClientUpdateList();
@@ -643,6 +726,13 @@ class MANGOS_DLL_SPEC WorldObject : public Object
 
         // WorldState operations
         void UpdateWorldState(uint32 state, uint32 value);
+        uint32 GetWorldState(uint32 state);
+
+        // Event handler
+        WorldObjectEventProcessor* GetEvents();
+        void UpdateEvents(uint32 update_diff, uint32 time);
+        void KillAllEvents(bool force);
+        void AddEvent(BasicEvent* Event, uint64 e_time, bool set_addtime = true);
 
     protected:
         explicit WorldObject();
@@ -659,9 +749,9 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         ObjectGuid m_lootRecipientGuid;                     // player who will have rights for looting if m_lootGroupRecipient==0 or group disbanded
         uint32 m_lootGroupRecipientId;                      // group who will have rights for looting if set and exist
 
-        ZoneScript *m_zoneScript;
-
         std::string m_name;
+
+        TransportInfo* m_transportInfo;
 
     private:
         Map * m_currMap;                                    //current object's Map location
@@ -676,6 +766,8 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         bool m_isActiveObject;
 
         uint32 m_LastUpdateTime;
+
+        WorldObjectEventProcessor m_Events;
 };
 
 #endif
