@@ -182,11 +182,8 @@ CombatManeuverReturns PlayerbotPriestAI::DoNextCombatManeuverPVE(Unit *pTarget)
     if (!m_ai)  return RETURN_NO_ACTION_ERROR;
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
 
-    Unit* pVictim = pTarget->getVictim();
     float dist = m_bot->GetCombatDistance(pTarget);
     uint32 spec = m_bot->GetSpec();
-
-    Group *m_group = m_bot->GetGroup();
 
     if (m_ai->GetCombatStyle() != PlayerbotAI::COMBAT_RANGED && dist > ATTACK_DISTANCE)
         m_ai->SetCombatStyle(PlayerbotAI::COMBAT_RANGED);
@@ -398,7 +395,7 @@ CombatManeuverReturns PlayerbotPriestAI::HealPlayer(Player* target)
         Unit::SpellAuraHolderMap const& auras = target->GetSpellAuraHolderMap();
         for (Unit::SpellAuraHolderMap::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
         {
-            SpellAuraHolder *holder = itr->second;
+            SpellAuraHolderPtr holder = itr->second;
             if ((1 << holder->GetSpellProto()->Dispel) & dispelMask)
             {
                 if (holder->GetSpellProto()->Dispel == DISPEL_DISEASE)

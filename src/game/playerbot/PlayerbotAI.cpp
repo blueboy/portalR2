@@ -81,10 +81,10 @@ PlayerbotAI::PlayerbotAI(PlayerbotMgr* const mgr, Player* const bot) :
 m_mgr(mgr), m_bot(bot), m_classAI(0), m_ignoreAIUpdatesUntilTime(CurrentTime()),
 m_combatOrder(ORDERS_NONE), m_ScenarioType(SCENARIO_PVE),
 m_TimeDoneEating(0), m_TimeDoneDrinking(0),
-m_CurrentlyCastingSpellId(0), m_spellIdCommand(0),
+m_CurrentlyCastingSpellId(0),
+m_spellIdCommand(0),
 m_targetGuidCommand(ObjectGuid()),
 m_taxiMaster(ObjectGuid()),
-m_AutoEquipToggle(false),
 m_bDebugCommandChat(false)
 {
     // set bot state
@@ -118,6 +118,7 @@ m_bDebugCommandChat(false)
     SetQuestNeedCreatures();
 
     // start following master (will also teleport bot to master)
+    m_AutoEquipToggle = false;
     m_FollowAutoGo = FOLLOWAUTOGO_OFF; //turn on bot auto follow distance can be turned off by player
     DistOverRide = 0; //set initial adjustable follow settings
     IsUpOrDown = 0;
@@ -2030,7 +2031,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                 return;
 
             // not let enemies sign guild charter
-            if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GUILD) && m_bot->GetTeam() != sObjectMgr.GetPlayerTeamByGUID(guild->GetLeaderGuid()))
+            if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_GUILD) && m_bot->GetTeam() != sAccountMgr.GetPlayerTeamByGUID(guild->GetLeaderGuid()))
                 return;
 
             if (!guild->AddMember(m_bot->GetObjectGuid(),guild->GetLowestRank()))
@@ -5105,7 +5106,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId)
             return false;
 
         // Power check (stolen from: CreatureAI.cpp - CreatureAI::CanCastSpell)
-        if (m_bot->GetPower((Powers)pSpellInfo->powerType) < Spell::CalculatePowerCost(pSpellInfo, m_bot))
+        if ((int32)m_bot->GetPower((Powers)pSpellInfo->powerType) < Spell::CalculatePowerCost(pSpellInfo, m_bot))
             return false;
 
         if (IsAutoRepeatRangedSpell(pSpellInfo))
@@ -6829,7 +6830,7 @@ void PlayerbotAI::findNearbyGO()
 
             TerrainInfo const *map = go->GetTerrain();
 
-            float ground_z = map->GetHeight(go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+            float ground_z = map->GetHeightStatic(go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
             // DEBUG_LOG("ground_z (%f) > INVALID_HEIGHT (%f)",ground_z,INVALID_HEIGHT);
             if ((ground_z > INVALID_HEIGHT) && go->isSpawned())
                 m_lootTargets.push_back(go->GetObjectGuid());
@@ -8501,7 +8502,7 @@ void PlayerbotAI::_HandleCommandOrders(std::string &text, Player &fromPlayer)
 
             if (text != "")
             {
-                ObjectGuid targ_guid = sObjectMgr.GetPlayerGuidByName(text.c_str());
+                ObjectGuid targ_guid = sAccountMgr.GetPlayerGuidByName(text.c_str());
                 targetGUID.Set(targ_guid.GetRawValue());
             }
             target = ObjectAccessor::GetUnit(fromPlayer, targetGUID);

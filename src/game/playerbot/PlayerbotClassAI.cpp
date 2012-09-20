@@ -196,7 +196,7 @@ Player* PlayerbotClassAI::GetHealTarget(JOB_TYPE type)
     // Sorts according to type: Healers first, tanks next, then master followed by DPS, thanks to the order of the TYPE enum
     std::sort(targets.begin(), targets.end());
 
-    uint8 uCount = 0;
+    int16 uCount = 0;
     // x is used as 'target found' variable; i is used as the targets iterator throughout all 4 types.
     int16 x = -1, i = 0;
 

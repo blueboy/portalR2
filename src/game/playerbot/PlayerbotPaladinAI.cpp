@@ -211,11 +211,8 @@ CombatManeuverReturns PlayerbotPaladinAI::DoNextCombatManeuverPVE(Unit *pTarget)
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
     if (!pTarget) return RETURN_NO_ACTION_INVALIDTARGET;
 
-    Unit* pVictim = pTarget->getVictim();
-
     // damage spells
     uint32 spec = m_bot->GetSpec();
-    float dist = m_bot->GetCombatDistance(pTarget);
     std::ostringstream out;
 
     // Make sure healer stays put, don't even melee (aggro) if in range.

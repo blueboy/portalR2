@@ -296,7 +296,8 @@ CombatManeuverReturns PlayerbotHunterAI::DoNextCombatManeuverPVE(Unit *pTarget)
             out << " > Bear Trap"; // this was just too annoying :)
            else if(DISENGAGE > 0 && pVictim && m_ai->CastSpell(DISENGAGE,*pTarget) )
             out << " > Disengage!"; // attempt to return to ranged combat*/
-        else RETURN_NO_ACTION_OK;
+        else 
+            return RETURN_NO_ACTION_OK;
     }
 
     return RETURN_NO_ACTION_OK;
