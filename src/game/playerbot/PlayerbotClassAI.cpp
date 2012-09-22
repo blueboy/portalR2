@@ -204,7 +204,7 @@ Player* PlayerbotClassAI::GetHealTarget(JOB_TYPE type)
     while (true)
     {
         // This works because we sorted it above
-        if ( (uCount + i) >= (int16)targets.size() || targets.at(uCount).type != JOB_HEAL) break;
+        if ( (uCount + i) >= (int16)targets.size() || !(targets.at(uCount).type & JOB_HEAL)) break;
         uCount++;
     }
 
@@ -220,7 +220,7 @@ Player* PlayerbotClassAI::GetHealTarget(JOB_TYPE type)
     // Try to find a tank in need of healing (if multiple, the lowest health one)
     while (true)
     {
-        if ( (uCount + i) >= (int16)targets.size() || targets.at(uCount).type != JOB_TANK) break;
+        if ( (uCount + i) >= (int16)targets.size() || !(targets.at(uCount).type & JOB_TANK)) break;
         uCount++;
     }
 
@@ -237,7 +237,7 @@ Player* PlayerbotClassAI::GetHealTarget(JOB_TYPE type)
     {
         while (true)
         {
-            if ( (uCount + i) >= (int16)targets.size() || targets.at(uCount).type != JOB_MASTER) break;
+            if ( (uCount + i) >= (int16)targets.size() || !(targets.at(uCount).type & JOB_MASTER)) break;
             uCount++;
         }
 
