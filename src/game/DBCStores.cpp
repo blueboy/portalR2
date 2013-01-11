@@ -16,6 +16,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include "SystemConfig.h"
 #include "DBCStores.h"
 #include "Policies/SingletonImp.h"
 #include "Log.h"
@@ -77,6 +78,7 @@ DBCStorage <CreatureSpellDataEntry> sCreatureSpellDataStore(CreatureSpellDatafmt
 DBCStorage <CreatureTypeEntry> sCreatureTypeStore(CreatureTypefmt);
 DBCStorage <CurrencyTypesEntry> sCurrencyTypesStore(CurrencyTypesfmt);
 
+DBCStorage <DestructibleModelDataEntry> sDestructibleModelDataStore(DestructibleModelDataFmt);
 DBCStorage <DungeonEncounterEntry> sDungeonEncounterStore(DungeonEncounterfmt);
 DBCStorage <DurabilityQualityEntry> sDurabilityQualityStore(DurabilityQualityfmt);
 DBCStorage <DurabilityCostsEntry> sDurabilityCostsStore(DurabilityCostsfmt);
@@ -418,6 +420,7 @@ void LoadDBCStores(const std::string& dataPath)
     LoadDBC(availableDbcLocales, bar, bad_dbc_files, sCreatureSpellDataStore,   dbcPath, "CreatureSpellData.dbc");
     LoadDBC(availableDbcLocales, bar, bad_dbc_files, sCreatureTypeStore,        dbcPath, "CreatureType.dbc");
     LoadDBC(availableDbcLocales, bar, bad_dbc_files, sCurrencyTypesStore,       dbcPath, "CurrencyTypes.dbc");
+    LoadDBC(availableDbcLocales, bar, bad_dbc_files, sDestructibleModelDataStore, dbcPath, "DestructibleModelData.dbc");
     LoadDBC(availableDbcLocales, bar, bad_dbc_files, sDungeonEncounterStore,    dbcPath, "DungeonEncounter.dbc");
     LoadDBC(availableDbcLocales, bar, bad_dbc_files, sDurabilityCostsStore,     dbcPath, "DurabilityCosts.dbc");
     LoadDBC(availableDbcLocales, bar, bad_dbc_files, sDurabilityQualityStore,   dbcPath, "DurabilityQuality.dbc");
@@ -532,9 +535,10 @@ void LoadDBCStores(const std::string& dataPath)
         std::swap(*((uint32*)(&spell->SpellFamilyFlags)), *(((uint32*)(&spell->SpellFamilyFlags)) + 1));
 #endif
 
-        for (uint8 j = 0; i < MAX_EFFECT_INDEX; ++i)
+        for (uint8 j = 0; j < MAX_EFFECT_INDEX; ++j)
         {
-            sSpellEffectMap[spell->Id].effects[SpellEffectIndex(j)] = new SpellEffectEntry(spell, SpellEffectIndex(i));
+            if (spell)
+                sSpellEffectMap[spell->Id].effects[SpellEffectIndex(j)] = SpellEffectEntry(spell, SpellEffectIndex(j));
         }
     }
 
@@ -682,9 +686,9 @@ void LoadDBCStores(const std::string& dataPath)
             if (node->map_id < 2 || i == 82 || i == 83 || i == 93 || i == 94)
                 sOldContinentsNodesMask[field] |= submask;
 
-            // fix DK node at Ebon Hold
+            // Hack DK node at Ebon Hold (unclear if bad dbc data or we need to revisit our checks in ObjectMgr::GetNearestTaxiNode )
             if (i == 315)
-               ((TaxiNodesEntry*)node)->MountCreatureID[1] = 32981;
+               (const_cast<TaxiNodesEntry*>(node))->MountCreatureID[1] = node->MountCreatureID[0];
         }
     }
 
@@ -774,7 +778,7 @@ SpellEffectEntry const* GetSpellEffectEntry(uint32 spellId, SpellEffectIndex eff
     if(itr == sSpellEffectMap.end())
         return NULL;
 
-    return itr->second.effects[effect];
+    return &itr->second.effects[effect];
 }
 
 

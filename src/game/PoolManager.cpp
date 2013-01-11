@@ -148,7 +148,7 @@ void PoolGroup<T>::AddEntry(PoolObject& poolitem, uint32 maxentries)
 template <class T>
 bool PoolGroup<T>::CheckPool() const
 {
-    if (EqualChanced.size() == 0)
+    if (EqualChanced.empty())
     {
         float chance = 0;
         for (uint32 i=0; i<ExplicitlyChanced.size(); ++i)
@@ -798,7 +798,8 @@ void PoolManager::LoadFromDB()
             GameObjectInfo const* goinfo = ObjectMgr::GetGameObjectInfo(data->id);
             if (goinfo->type != GAMEOBJECT_TYPE_CHEST &&
                 goinfo->type != GAMEOBJECT_TYPE_GOOBER &&
-                goinfo->type != GAMEOBJECT_TYPE_FISHINGHOLE)
+                goinfo->type != GAMEOBJECT_TYPE_FISHINGHOLE &&
+                goinfo->type != GAMEOBJECT_TYPE_TRAP)
             {
                 sLog.outErrorDb("`pool_gameobject` has a not lootable gameobject spawn (GUID: %u, type: %u) defined for pool id (%u), skipped.", guid, goinfo->type, pool_id );
                 continue;
@@ -870,7 +871,8 @@ void PoolManager::LoadFromDB()
             GameObjectInfo const* goinfo = ObjectMgr::GetGameObjectInfo(data->id);
             if (goinfo->type != GAMEOBJECT_TYPE_CHEST &&
                 goinfo->type != GAMEOBJECT_TYPE_GOOBER &&
-                goinfo->type != GAMEOBJECT_TYPE_FISHINGHOLE)
+                goinfo->type != GAMEOBJECT_TYPE_FISHINGHOLE &&
+                goinfo->type != GAMEOBJECT_TYPE_TRAP)
             {
                 sLog.outErrorDb("`pool_gameobject_template` has a not lootable gameobject spawn (GUID: %u Entry %u Type: %u) defined for pool id (%u), skipped.", guid, entry_id, goinfo->type, pool_id);
                 continue;

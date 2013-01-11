@@ -35,6 +35,7 @@
 #include "MapPersistentStateMgr.h"
 #include "ObjectAccessor.h"
 #include "ObjectGuid.h"
+#include "Opcodes.h"
 #include "Policies/Singleton.h"
 #include "Vehicle.h"
 
@@ -72,7 +73,7 @@ struct SpellClickInfo
     bool IsFitToRequirements(Player const* player) const;
 };
 
-typedef std::multimap<uint32, SpellClickInfo> SpellClickInfoMap;
+typedef UNORDERED_MULTIMAP<uint32, SpellClickInfo> SpellClickInfoMap;
 typedef std::pair<SpellClickInfoMap::const_iterator,SpellClickInfoMap::const_iterator> SpellClickInfoMapBounds;
 
 struct AreaTrigger
@@ -154,6 +155,8 @@ typedef UNORDERED_MAP<uint32/*(mapid,spawnMode) pair*/,CellObjectGuidsMap> MapOb
 #define MIN_CREATURE_AI_TEXT_STRING_ID (-1)                 // 'creature_ai_texts'
 #define MAX_CREATURE_AI_TEXT_STRING_ID (-1000000)
 
+static_assert(MAX_DB_SCRIPT_STRING_ID < ACE_INT32_MAX, "Must scope with int32 range");
+
 struct MangosStringLocale
 {
     std::vector<std::string> Content;                       // 0 -> default, i -> i-1 locale index
@@ -216,9 +219,9 @@ typedef UNORDERED_MAP<uint32,GossipMenuItemsLocale> GossipMenuItemsLocaleMap;
 typedef UNORDERED_MAP<uint32,PointOfInterestLocale> PointOfInterestLocaleMap;
 typedef UNORDERED_MAP<uint32,uint32> ItemConvertMap;
 
-typedef std::multimap<int32, uint32> ExclusiveQuestGroupsMap;
-typedef std::multimap<uint32, ItemRequiredTarget> ItemRequiredTargetMap;
-typedef std::multimap<uint32, uint32> QuestRelationsMap;
+typedef UNORDERED_MULTIMAP<int32, uint32> ExclusiveQuestGroupsMap;
+typedef UNORDERED_MULTIMAP<uint32, ItemRequiredTarget> ItemRequiredTargetMap;
+typedef UNORDERED_MULTIMAP<uint32, uint32> QuestRelationsMap;
 typedef std::pair<ExclusiveQuestGroupsMap::const_iterator, ExclusiveQuestGroupsMap::const_iterator> ExclusiveQuestGroupsMapBounds;
 typedef std::pair<ItemRequiredTargetMap::const_iterator, ItemRequiredTargetMap::const_iterator> ItemRequiredTargetMapBounds;
 typedef std::pair<QuestRelationsMap::const_iterator, QuestRelationsMap::const_iterator> QuestRelationsMapBounds;
@@ -305,7 +308,7 @@ struct AntiCheatConfig
     float  checkFloatParam[ANTICHEAT_CHECK_PARAMETERS];
     uint32 actionType[ANTICHEAT_ACTIONS];
     uint32 actionParam[ANTICHEAT_ACTIONS];
-    std::set<uint32> disabledZones;
+    UNORDERED_SET<uint32> disabledZones;
     std::string description;
 
 };
@@ -377,9 +380,6 @@ struct GossipMenuItems
     bool            box_coded;
     uint32          box_money;
     std::string     box_text;
-    uint16          cond_1;
-    uint16          cond_2;
-    uint16          cond_3;
     uint16          conditionId;
 };
 
@@ -388,8 +388,6 @@ struct GossipMenus
     uint32          entry;
     uint32          text_id;
     uint32          script_id;
-    uint16          cond_1;
-    uint16          cond_2;
     uint16          conditionId;
 };
 
@@ -460,7 +458,8 @@ typedef std::multimap<uint32 /*zoneId*/, GraveYardData> GraveYardMap;
 typedef std::pair<GraveYardMap::const_iterator, GraveYardMap::const_iterator> GraveYardMapBounds;
 
 enum ConditionType
-{                                                           // value1       value2  for the Condition enumed
+{
+    //                                                      // value1       value2  for the Condition enumed
     CONDITION_NOT                   = -3,                   // cond-id-1    0          returns !cond-id-1
     CONDITION_OR                    = -2,                   // cond-id-1    cond-id-2  returns cond-id-1 OR cond-id-2
     CONDITION_AND                   = -1,                   // cond-id-1    cond-id-2  returns cond-id-1 AND cond-id-2
@@ -482,7 +481,7 @@ enum ConditionType
     CONDITION_LEVEL                 = 15,                   // player_level 0, 1 or 2 (0: equal to, 1: equal or higher than, 2: equal or less than)
     CONDITION_NOITEM                = 16,                   // item_id      count   check not present req. amount items in inventory
     CONDITION_SPELL                 = 17,                   // spell_id     0, 1 (0: has spell, 1: hasn't spell)
-    CONDITION_INSTANCE_SCRIPT       = 18,                   // map_id       instance_condition_id (instance script specific enum)
+    CONDITION_INSTANCE_SCRIPT       = 18,                   // instance_condition_id (instance script specific enum) 0
     CONDITION_QUESTAVAILABLE        = 19,                   // quest_id     0       for case when loot/gossip possible only if player can start quest
     CONDITION_ACHIEVEMENT           = 20,                   // ach_id       0, 1 (0: has achievement, 1: hasn't achievement) for player
     CONDITION_ACHIEVEMENT_REALM     = 21,                   // ach_id       0, 1 (0: has achievement, 1: hasn't achievement) for server
@@ -501,6 +500,8 @@ enum ConditionType
                                                             // If skill_value == 1, then true if player has not skill skill_id
     CONDITION_REPUTATION_RANK_MAX   = 30,                   // faction_id   max_rank
     CONDITION_COMPLETED_ENCOUNTER   = 31,                   // encounter_id encounter_id2       encounter_id[2] = DungeonEncounter(dbc).id (if value2 provided it will return value1 OR value2)
+    CONDITION_SOURCE_AURA           = 32,                   // spell_id     effindex (returns true if the source of the condition check has aura of spell_id, effIndex)
+    CONDITION_LAST_WAYPOINT         = 33,                   // waypointId   0 = exact, 1: wp <= waypointId, 2: wp > waypointId  Use to check what waypoint was last reached
 };
 
 class PlayerCondition
@@ -516,15 +517,13 @@ class PlayerCondition
         bool IsValid() const { return IsValid(m_entry, m_condition, m_value1, m_value2); }
         static bool IsValid(uint16 entry, ConditionType condition, uint32 value1, uint32 value2);
 
-        bool Meets(Player const* pPlayer) const;            // Checks if the player meets the condition
+        static bool CanBeUsedWithoutPlayer(uint16 entry);
 
-        // TODO: old system, remove soon!
-        bool operator == (PlayerCondition const& lc) const
-        {
-            return (lc.m_condition == m_condition && lc.m_value1 == m_value1 && lc.m_value2 == m_value2);
-        }
+        // Checks if the player meets the condition
+        bool Meets(Player const* pPlayer, Map const* map, WorldObject const* source, ConditionSource conditionSourceType) const;
 
     private:
+        bool CheckParamRequirements(Player const* pPlayer, Map const* map, WorldObject const* source, ConditionSource conditionSourceType) const;
         uint16 m_entry;                                     // entry of the condition
         ConditionType m_condition;                          // additional condition type
         uint32 m_value1;                                    // data for the condition - see ConditionType definition
@@ -746,15 +745,6 @@ class ObjectMgr
             return NULL;
         }
 
-        VehicleAccessoryList const* GetVehicleAccessoryList(uint32 uiEntry) const
-        {
-            VehicleAccessoryMap::const_iterator itr = m_VehicleAccessoryMap.find(uiEntry);
-            if (itr != m_VehicleAccessoryMap.end())
-                return &itr->second;
-            return NULL;
-        }
-
-
         // Static wrappers for various accessors
         static GameObjectInfo const* GetGameObjectInfo(uint32 id);                  ///< Wrapper for sGOStorage.LookupEntry
         static Player* GetPlayer(const char* name);                                 ///< Wrapper for ObjectAccessor::FindPlayerByName
@@ -843,6 +833,8 @@ class ObjectMgr
         void LoadNPCSpellClickSpells();
         void LoadSpellTemplate();
 
+        void LoadOpcodes();
+
         void LoadWeatherZoneChances();
         void LoadGameTele();
 
@@ -853,7 +845,9 @@ class ObjectMgr
         void LoadTrainerTemplates();
         void LoadTrainers() { LoadTrainers("npc_trainer", false); }
 
-        void LoadVehicleAccessories();
+        void LoadVehicleAccessory();
+
+        void LoadTransports(Map* map);
 
         std::string GeneratePetName(uint32 entry);
         uint32 GetBaseXP(uint32 level) const;
@@ -1083,18 +1077,8 @@ class ObjectMgr
         int GetIndexForLocale(LocaleConstant loc);
         LocaleConstant GetLocaleForIndex(int i);
 
-        // TODO: Outdated version, rename NEW and remove soon
-        uint16 GetConditionId(ConditionType condition, uint32 value1, uint32 value2);
-        bool IsPlayerMeetToCondition(Player const* player, uint16 condition_id) const
-        {
-            if(condition_id >= mConditions.size())
-                return false;
-
-            return mConditions[condition_id].Meets(player);
-        }
-
         // Check if a player meets condition conditionId
-        bool IsPlayerMeetToNEWCondition(Player const* pPlayer, uint16 conditionId) const;
+        bool IsPlayerMeetToCondition(uint16 conditionId, Player const* pPlayer, Map const* map, WorldObject const* source, ConditionSource conditionSourceType) const;
 
         GameTele const* GetGameTele(uint32 id) const
         {
@@ -1233,6 +1217,19 @@ class ObjectMgr
         QuestRelationsMap& GetCreatureQuestRelationsMap() { return m_CreatureQuestRelations; }
 
         uint32 GetModelForRace(uint32 sourceModelId, uint32 racemask);
+
+        uint16 const GetOpcodeValue(Opcodes opcode) const
+        {
+            UNORDERED_MAP<Opcodes, uint16>::const_iterator iter = opcodeValueSubstTable.find(opcode);
+            return (iter == opcodeValueSubstTable.end()) ? 0 : iter->second;
+        }
+        Opcodes const GetOpcode(uint16 value) const
+        {
+            UNORDERED_MAP<uint16, Opcodes>::const_iterator iter = opcodeSubstTable.find(value);
+            return (iter == opcodeSubstTable.end()) ? MSG_NULL_ACTION : iter->second;
+        }
+        bool MakeOpcodeHash(Opcodes opcode, uint16 value);
+
     protected:
 
         // initial free low guid for selected guid type for map local guids
@@ -1262,10 +1259,10 @@ class ObjectMgr
 
         typedef UNORDERED_MAP<uint32, GossipText> GossipTextMap;
         typedef UNORDERED_MAP<uint32, uint32> QuestAreaTriggerMap;
-        typedef std::set<uint32> TavernAreaTriggerSet;
-        typedef std::set<uint32> GameObjectForQuestSet;
+        typedef UNORDERED_SET<uint32> TavernAreaTriggerSet;
+        typedef UNORDERED_SET<uint32> GameObjectForQuestSet;
 
-        typedef std::multimap<uint32, CreatureModelRace> CreatureModelRaceMap;
+        typedef UNORDERED_MULTIMAP<uint32, CreatureModelRace> CreatureModelRaceMap;
         typedef std::pair<CreatureModelRaceMap::const_iterator, CreatureModelRaceMap::const_iterator> CreatureModelRaceMapBounds;
 
         GroupMap            mGroupMap;
@@ -1290,7 +1287,7 @@ class ObjectMgr
         WeatherZoneMap      mWeatherZoneMap;
 
         //character reserved names
-        typedef std::set<std::wstring> ReservedNamesMap;
+        typedef UNORDERED_SET<std::wstring> ReservedNamesMap;
         ReservedNamesMap    m_ReservedNames;
 
         typedef UNORDERED_MAP<uint32, uint32> SpellDisabledMap;
@@ -1306,8 +1303,6 @@ class ObjectMgr
         ItemConvertMap        m_ItemExpireConvert;
         ItemRequiredTargetMap m_ItemRequiredTarget;
 
-        VehicleAccessoryMap m_VehicleAccessoryMap;
-
         typedef             std::vector<LocaleConstant> LocalForIndex;
         LocalForIndex        m_LocalForIndex;
 
@@ -1319,6 +1314,9 @@ class ObjectMgr
         QuestRelationsMap       m_GOQuestInvolvedRelations;
 
         int DBCLocaleIndex;
+
+        UNORDERED_MAP<Opcodes, uint16>  opcodeValueSubstTable;    // Hash for fast subst internal->real opcode
+        UNORDERED_MAP<uint16, Opcodes>  opcodeSubstTable;         // Hash for fast subst real->internal opcode
 
     private:
         void LoadCreatureAddons(SQLStorage& creatureaddons, char const* entryName, char const* comment);
@@ -1375,10 +1373,6 @@ class ObjectMgr
         GossipMenuItemsLocaleMap mGossipMenuItemsLocaleMap;
         PointOfInterestLocaleMap mPointOfInterestLocaleMap;
         DungeonEncounterMap m_DungeonEncounters;
-
-        // Storage for Conditions. First element (index 0) is reserved for zero-condition (nothing required)
-        typedef std::vector<PlayerCondition> ConditionStore;
-        ConditionStore mConditions;
 
         CreatureModelRaceMap    m_mCreatureModelRaceMap;
 

@@ -55,11 +55,11 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     WorldLocation &loc = GetPlayer()->GetTeleportDest();
 
     // possible errors in the coordinate validity check (only cheating case possible)
-    if (!MapManager::IsValidMapCoord(loc.mapid, loc.coord_x, loc.coord_y, loc.coord_z, loc.orientation))
+    if (!MapManager::IsValidMapCoord(loc))
     {
         sLog.outError("WorldSession::HandleMoveWorldportAckOpcode: %s was teleported far to a not valid location "
             "(map:%u, x:%f, y:%f, z:%f) We port him to his homebind instead..",
-            GetPlayer()->GetGuidStr().c_str(), loc.mapid, loc.coord_x, loc.coord_y, loc.coord_z);
+            GetPlayer()->GetGuidStr().c_str(), loc.GetMapId(), loc.coord_x, loc.coord_y, loc.coord_z);
         // stop teleportation else we would try this again and again in LogoutPlayer...
         GetPlayer()->SetSemaphoreTeleportFar(false);
         // and teleport the player to a valid place
@@ -68,7 +68,7 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     }
 
     // get the destination map entry, not the current one, this will fix homebind and reset greeting
-    MapEntry const* mEntry = sMapStore.LookupEntry(loc.mapid);
+    MapEntry const* mEntry = sMapStore.LookupEntry(loc.GetMapId());
 
     Map* map = NULL;
 
@@ -76,18 +76,18 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     if(mEntry->IsBattleGroundOrArena())
     {
         if (GetPlayer()->GetBattleGroundId())
-            map = sMapMgr.FindMap(loc.mapid, GetPlayer()->GetBattleGroundId());
+            map = sMapMgr.FindMap(loc.GetMapId(), GetPlayer()->GetBattleGroundId());
 
         if (!map)
         {
             DETAIL_LOG("WorldSession::HandleMoveWorldportAckOpcode: %s was teleported far to nonexisten battleground instance "
                 " (map:%u, x:%f, y:%f, z:%f) Trying to port him to his previous place..",
-                GetPlayer()->GetGuidStr().c_str(), loc.mapid, loc.coord_x, loc.coord_y, loc.coord_z);
+                GetPlayer()->GetGuidStr().c_str(), loc.GetMapId(), loc.coord_x, loc.coord_y, loc.coord_z);
 
             GetPlayer()->SetSemaphoreTeleportFar(false);
 
             // Teleport to previous place, if cannot be ported back TP to homebind place
-            if (!GetPlayer()->TeleportTo(old_loc))
+            if (!GetPlayer()->TeleportTo(old_loc, TELE_TO_NODELAY))
             {
                 DETAIL_LOG("WorldSession::HandleMoveWorldportAckOpcode: %s cannot be ported to his previous place, teleporting him to his homebind place...",
                     GetPlayer()->GetGuidStr().c_str());
@@ -97,7 +97,7 @@ void WorldSession::HandleMoveWorldportAckOpcode()
         }
     }
 
-    InstanceTemplate const* mInstance = ObjectMgr::GetInstanceTemplate(loc.mapid);
+    InstanceTemplate const* mInstance = ObjectMgr::GetInstanceTemplate(loc.GetMapId());
 
     // reset instance validity, except if going to an instance inside an instance
     if (GetPlayer()->m_InstanceValid == false && !mInstance)
@@ -107,11 +107,11 @@ void WorldSession::HandleMoveWorldportAckOpcode()
 
     // relocate the player to the teleport destination
     if (!map)
-        map = sMapMgr.CreateMap(loc.mapid, GetPlayer());
+        map = sMapMgr.CreateMap(loc.GetMapId(), GetPlayer());
 
     if (!map)
     {
-        DETAIL_LOG("WorldSession::HandleMoveWorldportAckOpcode: cannot create requested map %u for teleport!",loc.mapid);
+        DETAIL_LOG("WorldSession::HandleMoveWorldportAckOpcode: cannot create requested map %u for teleport!", loc.GetMapId());
         GetPlayer()->SetSemaphoreTeleportFar(false);
         GetPlayer()->TeleportToHomebind();
         return;
@@ -130,10 +130,10 @@ void WorldSession::HandleMoveWorldportAckOpcode()
 
         DETAIL_LOG("WorldSession::HandleMoveWorldportAckOpcode: %s was teleported far but couldn't be added to map "
             " (map:%u, x:%f, y:%f, z:%f) Trying to port him to his previous place..",
-            GetPlayer()->GetGuidStr().c_str(), loc.mapid, loc.coord_x, loc.coord_y, loc.coord_z);
+            GetPlayer()->GetGuidStr().c_str(), loc.GetMapId(), loc.coord_x, loc.coord_y, loc.coord_z);
 
         // Teleport to previous place, if cannot be ported back TP to homebind place
-        if (!GetPlayer()->TeleportTo(old_loc))
+        if (!GetPlayer()->TeleportTo(old_loc, TELE_TO_NODELAY))
         {
             DETAIL_LOG("WorldSession::HandleMoveWorldportAckOpcode: %s cannot be ported to his previous place, teleporting him to his homebind place...",
                 GetPlayer()->GetGuidStr().c_str());
@@ -265,12 +265,13 @@ void WorldSession::HandleMoveTeleportAckOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 {
-    uint32 opcode = recv_data.GetOpcode();
-    DEBUG_LOG("WORLD: Recvd %s (%u, 0x%X) opcode", LookupOpcodeName(opcode), opcode, opcode);
-    recv_data.hexlike();
+    Opcodes opcode = recv_data.GetOpcode();
 
-    Unit *mover = _player->GetMover();
-    Player *plMover = mover->GetTypeId() == TYPEID_PLAYER ? (Player*)mover : NULL;
+    DEBUG_FILTER_LOG(LOG_FILTER_PLAYER_MOVES,"WorldSession::HandleMovementOpcodes: Recvd %s (%u, 0x%X) opcode", LookupOpcodeName(opcode), opcode, opcode);
+    //recv_data.hexlike();
+
+    Unit* mover = _player->GetMover();
+    Player* plMover = mover->GetTypeId() == TYPEID_PLAYER ? (Player*)mover : NULL;
 
     // ignore, waiting processing in WorldSession::HandleMoveWorldportAckOpcode and WorldSession::HandleMoveTeleportAck
     if(plMover && plMover->IsBeingTeleported())
@@ -323,7 +324,7 @@ void WorldSession::HandleForceSpeedChangeAckOpcodes(WorldPacket &recv_data)
     recv_data >> movementInfo;
     recv_data >> newspeed;
 
-    DEBUG_LOG("WORLD: Recvd %s (%u, 0x%X) opcode, unit %s new speed %u ", LookupOpcodeName(opcode), opcode, opcode,
+    DEBUG_LOG("WORLD: Recvd %s (%u, 0x%X) opcode, unit %s new speed %f ", LookupOpcodeName(opcode), opcode, opcode,
         guid ? guid.GetString().c_str() : "<none>", newspeed);
 
     // now can skip not our packet

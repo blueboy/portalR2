@@ -44,10 +44,21 @@ void RandomMovementGenerator<Creature>::_setRandomLocation(Creature &creature)
     const float angle = rand_norm_f() * (M_PI_F*2.0f);
     const float range = rand_norm_f() * i_radius;
 
-    float destX = i_x + range * cos(angle);
-    float destY = i_y + range * sin(angle);
-    float destZ = i_z + frand(-1,1) * i_verticalZ;
+    float destX,destY,destZ;
+    creature.GetNearPoint(&creature, destX, destY, destZ, creature.GetObjectBoundingRadius(), range, angle);
     creature.UpdateAllowedPositionZ(destX, destY, destZ);
+
+    float dx = i_x - destX;
+    float dy = i_y - destY;
+    // TODO: Limitation creatutre travel range.
+    if (sqrt((dx*dx) + (dy*dy)) > i_radius)
+    {
+        destX = i_x;
+        destY = i_y;
+        destZ = i_z;
+    }
+    else if (creature.IsLevitating())
+        destZ = i_z;
 
     creature.addUnitState(UNIT_STAT_ROAMING_MOVE);
 
@@ -81,15 +92,21 @@ void RandomMovementGenerator<Creature>::Reset(Creature &creature)
 template<>
 void RandomMovementGenerator<Creature>::Interrupt(Creature &creature)
 {
-    creature.clearUnitState(UNIT_STAT_ROAMING|UNIT_STAT_ROAMING_MOVE);
-    creature.SetWalk(false);
+    if (!creature.movespline->Finalized())
+    {
+        Location loc = creature.movespline->ComputePosition();
+        creature.SetPosition(loc.x,loc.y,loc.z,loc.orientation);
+        creature.movespline->_Interrupt();
+    }
+    creature.clearUnitState(UNIT_STAT_ROAMING | UNIT_STAT_ROAMING_MOVE);
+    creature.SetWalk(!creature.hasUnitState(UNIT_STAT_RUNNING_STATE), false);
 }
 
 template<>
 void RandomMovementGenerator<Creature>::Finalize(Creature &creature)
 {
-    creature.clearUnitState(UNIT_STAT_ROAMING|UNIT_STAT_ROAMING_MOVE);
-    creature.SetWalk(false);
+    creature.clearUnitState(UNIT_STAT_ROAMING | UNIT_STAT_ROAMING_MOVE);
+    creature.SetWalk(!creature.hasUnitState(UNIT_STAT_RUNNING_STATE), false);
 }
 
 template<>
