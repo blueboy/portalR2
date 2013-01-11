@@ -55,7 +55,6 @@ void WorldObjectEventProcessor::KillAllEvents(bool force)
     EventProcessor::KillAllEvents(force);
 }
 
-
 void WorldObjectEventProcessor::AddEvent(BasicEvent* Event, uint64 e_time, bool set_addtime)
 {
     if (set_addtime)
@@ -254,6 +253,7 @@ bool RelocationNotifyEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 void RelocationNotifyEvent::Abort(uint64)
 {
     m_owner._SetAINotifyScheduled(false);
+    to_Abort = true;
 };
 
 bool ManaUseEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
@@ -367,9 +367,10 @@ bool EvadeDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
             if (c_owner->IsDespawned() || c_owner->isCharmed() || c_owner->hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL))
                 return true;
 
-            CreatureAI* ai = c_owner->AI();
-            if (ai)
+            c_owner->LockAI(true);
+            if (CreatureAI* ai = c_owner->AI())
                 ai->EnterEvadeMode();
+            c_owner->LockAI(false);
 
             if (InstanceData* mapInstance = c_owner->GetInstanceData())
                 mapInstance->OnCreatureEvade(c_owner);
@@ -421,13 +422,10 @@ bool EvadeDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 // Vehicle events
 bool PassengerEjectEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 {
-    if (!m_vehicle.GetVehicleInfo())
+    if (!m_vehicle.IsVehicle())
         return true;
 
     VehicleKitPtr pVehicle = m_vehicle.GetVehicleKit();
-
-    if (!pVehicle)
-        return true;
 
     Unit* passenger = pVehicle->GetPassenger(m_seatId);
 
@@ -436,6 +434,17 @@ bool PassengerEjectEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
         if (!m_vehicle.RemoveSpellsCausingAuraByCaster(SPELL_AURA_CONTROL_VEHICLE, passenger->GetObjectGuid()))
             passenger->ExitVehicle();
     }
+    return true;
+}
+
+// Player events
+bool TeleportDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
+{
+    if (!m_owner.GetSession() || m_owner.GetSession()->PlayerLogout())
+        return true;
+
+    m_owner.SetSemaphoreTeleportDelayEvent(false);
+    m_owner.TeleportTo(m_location, m_options);
     return true;
 }
 

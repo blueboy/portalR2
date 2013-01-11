@@ -3140,17 +3140,22 @@ enum ActivateTaxiReply
     ERR_TAXINOTSTANDING             = 12
 };
 
-// we need to stick to 1 version or half of the stuff will work for someone
-// others will not and opposite
-// will only support WoW, WoW:TBC and WoW:WotLK 3.3.5a client build 12340...
 
-#define EXPECTED_MANGOSD_CLIENT_BUILD        {12340, 0}
+enum TrackedAuraType
+{
+    TRACK_AURA_TYPE_NOT_TRACKED                 = 0,        // relation - caster : target is n:m (usual case)
+    TRACK_AURA_TYPE_SINGLE_TARGET               = 1,        // relation - caster : target is 1:1. Might get stolen
+    TRACK_AURA_TYPE_CONTROL_VEHICLE             = 2,        // relation - caster : target is N:1.
+    MAX_TRACKED_AURA_TYPES
+};
 
-// max supported expansion level in mangosd
-// NOTE: not set it more that supported by targeted client version with all expansions installed
-// account with expansion > client supported will rejected at connection by client
-// because if client receive unsupported expansion level it think
-// that it not have expansion installed and reject
-#define MAX_EXPANSION 2
+enum ConditionSource                                        // From where was the condition called?
+{
+    CONDITION_FROM_LOOT             = 0,                    // Used to check a *_loot_template entry
+    CONDITION_FROM_REFERING_LOOT    = 1,                    // Used to check a entry refering to a reference_loot_template entry
+    CONDITION_FROM_GOSSIP_MENU      = 2,                    // Used to check a gossip menu menu-text
+    CONDITION_FROM_GOSSIP_OPTION    = 3,                    // Used to check a gossip menu option-item
+    CONDITION_FROM_EVENTAI          = 4,                    // Used to check EventAI Event "On Receive Emote"
+};
 
 #endif

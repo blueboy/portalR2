@@ -1236,10 +1236,10 @@ enum Opcodes
     CMSG_SET_ARENA_TEAM_SEASON_GAMES                = 0x4AF,
     CMSG_SET_ARENA_MEMBER_WEEKLY_GAMES              = 0x4B0,
     CMSG_SET_ARENA_MEMBER_SEASON_GAMES              = 0x4B1,
-    SMSG_SET_ITEM_PURCHASE_DATA                     = 0x4B2,
-    CMSG_GET_ITEM_PURCHASE_DATA                     = 0x4B3,
-    CMSG_ITEM_PURCHASE_REFUND                       = 0x4B4,
-    SMSG_ITEM_PURCHASE_REFUND_RESULT                = 0x4B5,
+    SMSG_ITEM_REFUND_INFO_RESPONSE                  = 0x4B2,
+    CMSG_GET_ITEM_REFUND_INFO                       = 0x4B3,
+    CMSG_ITEM_REFUND                                = 0x4B4,
+    SMSG_ITEM_REFUND_RESULT                         = 0x4B5,
     CMSG_CORPSE_TRANSPORT_QUERY                     = 0x4B6,
     SMSG_CORPSE_TRANSPORT_QUERY                     = 0x4B7,
     CMSG_UNUSED5                                    = 0x4B8,
@@ -1385,5 +1385,19 @@ inline const char* LookupOpcodeName(uint16 id)
         return "Received unknown opcode, it's more than max!";
     return opcodeTable[id].name;
 }
+
+enum OpcodeLoadFlags
+{
+    OPCODE_LOAD_FLAGS_NONE           = 0x0,
+    OPCODE_LOAD_FLAGS_UNHANDLED      = 0x1,
+    OPCODE_LOAD_FLAGS_MAX            = 0x100,
+};
+
+HASH_NAMESPACE_START
+template<> class hash <Opcodes>
+{
+    public: size_t operator()(const Opcodes &__x) const { return (size_t)__x; }
+};
+HASH_NAMESPACE_END
 #endif
 /// @}

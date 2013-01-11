@@ -55,6 +55,11 @@ enum PetAutoSpellType
     PET_SPELL_MAX
 };
 
+enum
+{
+    ALLIES_UPDATE_TIME = 10*IN_MILLISECONDS,
+};
+
 class MANGOS_DLL_DECL PetAI : public CreatureAI
 {
     public:
@@ -78,6 +83,9 @@ class MANGOS_DLL_DECL PetAI : public CreatureAI
 
         GuidSet const& GetAllyGuids() { return m_AllySet; };
 
+        bool  SetPrimaryTarget(ObjectGuid const& guid);
+        Unit* GetPrimaryTarget();
+
     private:
         bool _isVisible(Unit *) const;
         bool _needToStop(void) const;
@@ -87,17 +95,17 @@ class MANGOS_DLL_DECL PetAI : public CreatureAI
         SpellCastResult CanAutoCast(Unit* target, SpellEntry const* spellInfo);
         uint32 GetSpellType(PetAutoSpellType type);
 
-        TimeTracker i_tracker;
         bool inCombat;
 
         GuidSet m_AllySet;
+        ObjectGuid m_primaryTargetGuid;
 
-        uint32 m_updateAlliesTimer;
+        IntervalTimer   m_updateAlliesTimer;
+        IntervalTimer   m_attackDistanceRecheckTimer;
 
         PetAIType       m_AIType;
         PetAIType       m_savedAIType;
-        float           attackDistance;
-        uint32          m_attackDistanceRecheckTimer;
+        float           m_attackDistance;
         ObjectGuid      m_savedTargetGuid;
         Unit::SpellIdSet      m_spellType[PET_SPELL_MAX]; //Classified autospell storage
 };

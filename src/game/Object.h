@@ -28,6 +28,8 @@
 #include "ObjectLock.h"
 #include "SharedDefines.h"
 #include "WorldObjectEvents.h"
+#include "WorldLocation.h"
+#include "LootMgr.h"
 
 #include <set>
 #include <string>
@@ -72,92 +74,7 @@ class TerrainInfo;
 class Transport;
 class TransportInfo;
 
-typedef UNORDERED_MAP<Player*, UpdateData> UpdateDataMapType;
-
-struct Position
-{
-    Position() : x(0.0f), y(0.0f), z(0.0f), o(0.0f) {}
-    Position(float _x, float _y, float _z, float _o) : x(_x), y(_y), z(_z), o(_o) {}
-    virtual ~Position() {};
-    union
-    {
-        float x;
-        float coord_x;
-    };
-    union
-    {
-        float y;
-        float coord_y;
-    };
-    union
-    {
-        float z;
-        float coord_z;
-    };
-    union
-    {
-        float o;
-        float orientation;
-    };
-
-    virtual bool HasMap() const { return false; };
-
-    bool operator == (Position const &pos) const
-    {
-        return ((x - pos.x < M_NULL_F)
-            && (y - pos.y < M_NULL_F)
-            && (z - pos.z < M_NULL_F));
-    }
-};
-
-struct WorldLocation : public Position
-{
-    // mapid = -1 for not initialized WorldLocation
-    int32     mapid;
-    uint32    instance;
-
-    // assume 0 as "current realm"
-    uint32    realmid;
-
-    WorldLocation()
-        : Position(), mapid(-1), instance(0), realmid(0)
-    {}
-
-    WorldLocation(uint32 _mapid, float _x, float _y, float _z, float _o = 0)
-        : Position(_x, _y, _z, _o), mapid(_mapid), instance(0), realmid(0)
-    {}
-
-    WorldLocation(uint32 _mapid, uint32 _instance, uint32 _realmid)
-        : Position(), mapid(_mapid), instance(_instance), realmid(_realmid)
-    {}
-
-    WorldLocation(float _x, float _y, float _z, float _o, uint32 _mapid, uint32 _instance, uint32 _realmid)
-        : Position(_x, _y, _z, _o), mapid(_mapid), instance(_instance), realmid(_realmid)
-    {}
-
-    WorldLocation(WorldLocation const &loc)
-        : Position(loc.coord_x, loc.coord_y, loc.coord_z, loc.orientation), mapid(loc.mapid), instance(loc.instance), realmid(loc.realmid)
-    {}
-
-    ~WorldLocation() {};
-
-    bool operator == (WorldLocation const &loc) const
-    {
-        return (realmid    == loc.realmid
-            && mapid       == loc.mapid
-            && instance    == loc.instance
-            && (coord_x - loc.coord_x < M_NULL_F)
-            && (coord_y - loc.coord_y < M_NULL_F)
-            && (coord_z - loc.coord_z < M_NULL_F));
-    }
-
-    bool HasMap() const override
-    {
-        return mapid >= 0;
-    }
-    Position const& GetPosition() { return *this; };
-};
-
+typedef UNORDERED_MAP<ObjectGuid, UpdateData> UpdateDataMapType;
 
 //use this class to measure time between world update ticks
 //essential for units updating their spells after cells become active
@@ -214,7 +131,7 @@ class MANGOS_DLL_SPEC Object
             // synchronize values mirror with values array (changes will send in updatecreate opcode any way
             ClearUpdateMask(false);                         // false - we can't have update data in update queue before adding to world
         }
-        virtual void RemoveFromWorld()
+        virtual void RemoveFromWorld(bool /*remove*/)
         {
             // if we remove from world then sending changes not required
             ClearUpdateMask(true);
@@ -249,6 +166,12 @@ class MANGOS_DLL_SPEC Object
         virtual void BuildUpdateData(UpdateDataMapType& update_players);
         void MarkForClientUpdate();
         void SendForcedObjectUpdate();
+
+        virtual GuidSet const* GetObjectsUpdateQueue() { return NULL; };
+        bool IsMarkedForClientUpdate() const { return m_objectUpdated; };
+        virtual Object* GetDependentObject(ObjectGuid const& guid) { return NULL; };
+        virtual void RemoveUpdateObject(ObjectGuid const& guid) {};
+        virtual void AddUpdateObject(ObjectGuid const& guid) {};
 
         void SetFieldNotifyFlag(uint16 flag) { m_fieldNotifyFlags |= flag; }
         void RemoveFieldNotifyFlag(uint16 flag) { m_fieldNotifyFlags &= ~flag; }
@@ -440,8 +363,6 @@ class MANGOS_DLL_SPEC Object
 
         uint16 GetValuesCount() const { return m_valuesCount; }
 
-        void InitValues() { _InitValues(); }
-
         // Frozen Mod
         void ForceValuesUpdateAtIndex(uint16);
         // Frozen Mod
@@ -531,6 +452,9 @@ class MANGOS_DLL_SPEC WorldObject : public Object
 
         void _Create(ObjectGuid guid, uint32 phaseMask);
 
+        void AddToWorld();
+        virtual void RemoveFromWorld(bool remove) override;
+
         TransportInfo* GetTransportInfo() const { return m_transportInfo; }
         bool IsBoarded() const { return m_transportInfo != NULL; }
         void SetTransportInfo(TransportInfo* transportInfo) { m_transportInfo = transportInfo; }
@@ -546,7 +470,7 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         void GetPosition( float &x, float &y, float &z ) const
             { x = m_position.x; y = m_position.y; z = m_position.z; }
         void GetPosition( WorldLocation &loc ) const
-            { loc.mapid = m_mapId; GetPosition(loc.coord_x, loc.coord_y, loc.coord_z); loc.orientation = GetOrientation(); }
+            { loc.SetMapId(m_mapId); GetPosition(loc.coord_x, loc.coord_y, loc.coord_z); loc.orientation = GetOrientation(); }
         float GetOrientation( ) const { return m_position.o; }
 
         virtual Transport* GetTransport() const { return NULL; }
@@ -639,7 +563,7 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         bool isInFront(WorldObject const* target,float distance, float arc = M_PI) const;
         bool isInBack(WorldObject const* target, float distance, float arc = M_PI) const;
 
-        virtual void CleanupsBeforeDelete();                // used in destructor or explicitly before mass creature delete to remove cross-references to already deleted units
+        virtual void CleanupsBeforeDelete();                   // used in destructor or explicitly before mass creature delete to remove cross-references to already deleted units
 
         virtual void SendMessageToSet(WorldPacket *data, bool self);
         virtual void SendMessageToSetInRange(WorldPacket *data, float dist, bool self);
@@ -689,13 +613,16 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         //obtain terrain data for map where this object belong...
         TerrainInfo const* GetTerrain() const;
 
-        void AddToClientUpdateList();
-        void RemoveFromClientUpdateList();
-        void BuildUpdateData(UpdateDataMapType &);
+        void AddToClientUpdateList() override;
+        void RemoveFromClientUpdateList() override;
+        void BuildUpdateData(UpdateDataMapType &) override;
 
         Creature* SummonCreature(uint32 id, float x, float y, float z, float ang,TempSummonType spwtype,uint32 despwtime, bool asActiveObject = false);
 
         GameObject* SummonGameobject(uint32 id, float x, float y, float z, float angle, uint32 despwtime);
+
+        // Loot System
+        Loot loot;
 
         void StartGroupLoot(Group* group, uint32 timer);
         void StopGroupLoot();
@@ -733,6 +660,8 @@ class MANGOS_DLL_SPEC WorldObject : public Object
         void UpdateEvents(uint32 update_diff, uint32 time);
         void KillAllEvents(bool force);
         void AddEvent(BasicEvent* Event, uint64 e_time, bool set_addtime = true);
+
+        virtual bool IsVehicle() const { return false; }
 
     protected:
         explicit WorldObject();

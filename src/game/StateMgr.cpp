@@ -68,6 +68,7 @@ public:
         if (!target)
             return;
 
+        target->StopMoving();
         target->addUnitState(UNIT_STAT_STUNNED);
         target->SetTargetGuid(ObjectGuid());
 
@@ -85,11 +86,7 @@ public:
         }
 
         target->SendMeleeAttackStop(NULL);
-
-        WorldPacket data(SMSG_FORCE_MOVE_ROOT, target->GetPackGUID().size() + 4);
-        data << target->GetPackGUID();
-        data << uint32(0);
-        target->SendMessageToSet(&data, true);
+        target->SetRoot(true);
     }
 
     void Finalize(Unit &u)
@@ -103,10 +100,7 @@ public:
         if(target->getVictim())
             target->SetTargetGuid(target->getVictim()->GetObjectGuid());
 
-        WorldPacket data(SMSG_FORCE_MOVE_UNROOT, target->GetPackGUID().size() + 4);
-        data << target->GetPackGUID();
-        data << uint32(0);
-        target->SendMessageToSet(&data, true);
+        target->SetRoot(false);
         target->m_movementInfo.RemoveMovementFlag(MOVEFLAG_ROOT);
         target->AddEvent(new AttackResumeEvent(*target), ATTACK_DISPLAY_DELAY);
     }
@@ -125,6 +119,7 @@ public:
         Unit* const target = &u;
         if (!target)
             return;
+        target->StopMoving();
         target->addUnitState(UNIT_STAT_ROOT);
         target->SetTargetGuid(ObjectGuid());
         //Save last orientation
@@ -134,23 +129,8 @@ public:
         //Clear unit movement flags
         target->m_movementInfo.RemoveMovementFlag(movementFlagsMask);
         target->m_movementInfo.AddMovementFlag(MOVEFLAG_ROOT);
-
         target->SendMeleeAttackStop(NULL);
-
-        if(target->GetTypeId() == TYPEID_PLAYER)
-        {
-            WorldPacket data(SMSG_FORCE_MOVE_ROOT, target->GetPackGUID().size() + 4);
-            data << target->GetPackGUID();
-            data << target->GetUnitStateMgr().GetCounter(UNIT_ACTION_ROOT);
-            target->SendMessageToSet(&data, true);
-        }
-        else
-        {
-            target->StopMoving();
-            WorldPacket data(SMSG_SPLINE_MOVE_ROOT, target->GetPackGUID().size());
-            data << target->GetPackGUID();
-            target->SendMessageToSet(&data, true);
-        }
+        target->SetRoot(true);
 
     }
 
@@ -160,19 +140,7 @@ public:
         if (!target)
             return;
         target->clearUnitState(UNIT_STAT_ROOT);
-        if(target->GetTypeId() == TYPEID_PLAYER)
-        {
-            WorldPacket data(SMSG_FORCE_MOVE_UNROOT, target->GetPackGUID().size() + 4);
-            data << target->GetPackGUID();
-            data << target->GetUnitStateMgr().GetCounter(UNIT_ACTION_ROOT);
-            target->SendMessageToSet(&data, true);
-        }
-        else
-        {
-            WorldPacket data(SMSG_SPLINE_MOVE_UNROOT, target->GetPackGUID().size());
-            data << target->GetPackGUID();
-            target->SendMessageToSet(&data, true);
-        }
+        target->SetRoot(false);
         target->m_movementInfo.RemoveMovementFlag(MOVEFLAG_ROOT);
 
         if(target->getVictim())
@@ -194,8 +162,7 @@ public:
         if (!target)
             return;
 
-        if (target->GetTypeId() != TYPEID_PLAYER)
-            target->StopMoving();
+        target->StopMoving();
 
         target->m_movementInfo.RemoveMovementFlag(movementFlagsMask);
         target->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNK_29);
@@ -602,6 +569,14 @@ ActionInfo* UnitStateMgr::GetAction(UnitActionPtr _action)
     return NULL;
 }
 
+ActionInfo* UnitStateMgr::GetAction(UnitActionId actionId)
+{
+    for (UnitActionStorage::reverse_iterator itr = m_actions.rbegin(); itr != m_actions.rend(); ++itr)
+        if (itr->second.Id == actionId)
+            return &itr->second;
+    return NULL;
+}
+
 UnitActionPtr UnitStateMgr::CurrentAction()
 {
     ActionInfo* action = CurrentState();
@@ -615,12 +590,15 @@ ActionInfo* UnitStateMgr::CurrentState()
 
 void UnitStateMgr::DropAllStates()
 {
-    if (!m_actions.empty())
+    // Assume, that if only one action - that IDLE appears (rechecked later).
+    if (m_actions.size() > 1 )
     {
         DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "UnitStateMgr:DropAllStates %s drop all active states (count = %u)", GetOwnerStr().c_str(), m_actions.size());
         DropActionHigherThen(UNIT_ACTION_PRIORITY_IDLE);
     }
-    PushAction(UNIT_ACTION_IDLE);
+    // Unique action after dropping may be not UNIT_ACTION_IDLE
+    if (m_actions.empty() || GetCurrentState() != UNIT_ACTION_IDLE)
+        PushAction(UNIT_ACTION_IDLE);
 }
 
 std::string const UnitStateMgr::GetOwnerStr() 

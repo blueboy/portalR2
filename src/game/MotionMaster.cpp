@@ -24,6 +24,7 @@
 #include "HomeMovementGenerator.h"
 #include "IdleMovementGenerator.h"
 #include "PointMovementGenerator.h"
+#include "Pet.h"
 #include "TargetedMovementGenerator.h"
 #include "WaypointMovementGenerator.h"
 #include "RandomMovementGenerator.h"
@@ -116,14 +117,12 @@ void MotionMaster::MoveTargetedHome()
                 case COMMAND_FOLLOW:
                 case COMMAND_ATTACK:
                 default:
-                    Mutate(new FollowMovementGenerator<Creature>(*target,PET_FOLLOW_DIST,angle), UNIT_ACTION_DOWAYPOINTS);
+                    MoveFollow(target, PET_FOLLOW_DIST, angle);
                     break;
             }
         }
         else
-        {
             DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "%s attempt but fail to follow owner", m_owner->GetGuidStr().c_str());
-        }
     }
     else
         sLog.outError("MotionMaster: %s attempt targeted home", m_owner->GetGuidStr().c_str());
@@ -261,6 +260,13 @@ void MotionMaster::propagateSpeedChange()
     GetUnitStateMgr()->CurrentAction()->UnitSpeedChanged();
 }
 
+uint32 MotionMaster::getLastReachedWaypoint() const
+{
+    if (ActionInfo* action = const_cast<MotionMaster*>(this)->GetUnitStateMgr()->GetAction(UNIT_ACTION_DOWAYPOINTS))
+        return static_cast<WaypointMovementGenerator<Creature>*>(&*(action->Action()))->getLastReachedWaypoint();
+    return 0;
+}
+
 MovementGeneratorType MotionMaster::GetCurrentMovementGeneratorType() const
 {
     return const_cast<MotionMaster*>(this)->CurrentMovementGenerator()->GetMovementGeneratorType();
@@ -276,12 +282,6 @@ bool MotionMaster::GetDestination(float &x, float &y, float &z)
     y = dest.y;
     z = dest.z;
     return true;
-}
-
-void MotionMaster::UpdateFinalDistanceToTarget(float fDistance)
-{
-    if (CurrentMovementGenerator()->GetMovementGeneratorType() == FOLLOW_MOTION_TYPE)
-        CurrentMovementGenerator()->UpdateFinalDistance(fDistance);
 }
 
 MotionMaster::MotionMaster(Unit *unit) : m_owner(unit)
@@ -366,6 +366,19 @@ void MotionMaster::MoveSkyDiving(float x, float y, float z, float o, float horiz
     Mutate(new EjectMovementGenerator(0), UNIT_ACTION_EFFECT);
 }
 
+void MotionMaster::MoveBoardVehicle(float x, float y, float z, float o, float horizontalSpeed, float max_height)
+{
+    Movement::MoveSplineInit init(*m_owner);
+    init.MoveTo(x,y,z,false, true);
+    init.SetParabolic(max_height, 0);
+    init.SetVelocity(horizontalSpeed);
+    init.SetFacing(o);
+    init.SetBoardVehicle();
+    init.Launch();
+    // Currently no real unit action in this method, only visual effect
+    //Mutate(new EffectMovementGenerator(0), UNIT_ACTION_EFFECT);
+}
+
 void MotionMaster::MoveWithSpeed(float x, float y, float z, float speed, bool generatePath, bool forceDestination)
 {
     Movement::MoveSplineInit init(*m_owner);
@@ -378,7 +391,7 @@ void MotionMaster::MoveWithSpeed(float x, float y, float z, float speed, bool ge
 void MotionMaster::MoveFall()
 {
     // use larger distance for vmap height search than in most other cases
-    float tz = m_owner->GetMap()->GetHeight(m_owner->GetPhaseMask(), m_owner->GetPositionX(), m_owner->GetPositionY(), m_owner->GetPositionZ(), true, MAX_FALL_DISTANCE);
+    float tz = m_owner->GetMap()->GetHeight(m_owner->GetPhaseMask(), m_owner->GetPositionX(), m_owner->GetPositionY(), m_owner->GetPositionZ());
     if (tz <= INVALID_HEIGHT)
     {
         sLog.outError("MotionMaster::MoveFall: unable retrive a proper height at map %u (x: %f, y: %f, z: %f).",

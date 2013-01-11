@@ -36,7 +36,6 @@
 #include "WorldPacket.h"
 #include "SpellAuras.h"
 #include "Timer.h"
-#include "LockedVector.h"
 #include <list>
 #include "StateMgr.h"
 
@@ -205,7 +204,7 @@ enum UnitRename
     UNIT_CAN_BE_ABANDONED   = 0x02,
 };
 
-#define CREATURE_MAX_SPELLS     4
+#define CREATURE_MAX_SPELLS     8
 
 enum Swing
 {
@@ -407,8 +406,18 @@ enum UnitState
     UNIT_STAT_FOLLOW_MOVE     = 0x00010000,
     UNIT_STAT_FLEEING         = 0x00020000,                     // FleeMovementGenerator/TimedFleeingMovementGenerator active/onstack
     UNIT_STAT_FLEEING_MOVE    = 0x00040000,
+
+    // custom MMGen (may be removed)
     UNIT_STAT_ON_VEHICLE      = 0x00080000,                     // Unit is on vehicle
-    UNIT_STAT_IGNORE_PATHFINDING    = 0x00100000,               // do not use pathfinding in any MovementGenerator
+
+    // More room for other MMGens
+
+    // High-Level states (usually only with Creatures)
+    UNIT_STAT_NO_COMBAT_MOVEMENT    = 0x01000000,           // Combat Movement for MoveChase stopped
+    UNIT_STAT_RUNNING               = 0x02000000,           // SetRun for waypoints and such
+    UNIT_STAT_WAYPOINT_PAUSED       = 0x04000000,           // Waypoint-Movement paused genericly (ie by script)
+
+    UNIT_STAT_IGNORE_PATHFINDING    = 0x10000000,           // do not use pathfinding in any MovementGenerator
 
     // masks (only for check)
 
@@ -438,6 +447,8 @@ enum UnitState
 
     // for real move using movegen check and stop (except unstoppable flight)
     UNIT_STAT_MOVING          = UNIT_STAT_ROAMING_MOVE | UNIT_STAT_CHASE_MOVE | UNIT_STAT_FOLLOW_MOVE | UNIT_STAT_FLEEING_MOVE,
+
+    UNIT_STAT_RUNNING_STATE   = UNIT_STAT_CHASE_MOVE | UNIT_STAT_FLEEING_MOVE | UNIT_STAT_RUNNING,
 
     UNIT_STAT_ALL_STATE       = 0xFFFFFFFF
 };
@@ -505,7 +516,7 @@ enum UnitVisibility
     VISIBILITY_GROUP_STEALTH      = 2,                      // detect chance, seen and can see group members
     VISIBILITY_GROUP_INVISIBILITY = 3,                      // invisibility, can see and can be seen only another invisible unit or invisible detection unit, set only if not stealthed, and in checks not used (mask used instead)
     VISIBILITY_GROUP_NO_DETECT    = 4,                      // state just at stealth apply for update Grid state. Don't remove, otherwise stealth spells will break
-    VISIBILITY_RESPAWN            = 5                       // special totally not detectable visibility for force delete object at respawn command
+    VISIBILITY_REMOVE_CORPSE      = 5                       // special totally not detectable visibility for force delete object while removing a corpse
 };
 
 // Value masks for UNIT_FIELD_FLAGS
@@ -623,13 +634,18 @@ enum MovementFlags
     MOVEFLAG_SWIMMING           = 0x00200000,               // appears with fly flag also
     MOVEFLAG_ASCENDING          = 0x00400000,               // swim up also
     MOVEFLAG_DESCENDING         = 0x00800000,               // swim down also
-    MOVEFLAG_CAN_FLY            = 0x01000000,               // can fly in 3.3?
-    MOVEFLAG_FLYING             = 0x02000000,               // Actual flying mode
+    MOVEFLAG_CAN_FLY            = 0x01000000,               // Appears when unit can fly AND also walk
+    MOVEFLAG_FLYING             = 0x02000000,               // unit is actually flying. pretty sure this is only used for players. creatures use disable_gravity
     MOVEFLAG_SPLINE_ELEVATION   = 0x04000000,               // used for flight paths
     MOVEFLAG_SPLINE_ENABLED     = 0x08000000,               // used for flight paths
     MOVEFLAG_WATERWALKING       = 0x10000000,               // prevent unit from falling through water
     MOVEFLAG_SAFE_FALL          = 0x20000000,               // active rogue safe fall spell (passive)
-    MOVEFLAG_HOVER              = 0x40000000
+    MOVEFLAG_HOVER              = 0x40000000,               // hover, cannot jump
+
+    MOVEFLAG_MASK_MOVING =
+        MOVEFLAG_FORWARD | MOVEFLAG_BACKWARD | MOVEFLAG_STRAFE_LEFT | MOVEFLAG_STRAFE_RIGHT |
+        MOVEFLAG_PITCH_UP | MOVEFLAG_PITCH_DOWN | MOVEFLAG_FALLING | MOVEFLAG_FALLINGFAR | MOVEFLAG_ASCENDING | MOVEFLAG_DESCENDING |
+        MOVEFLAG_SPLINE_ELEVATION,
 };
 
 // flags that use in movement check for example at spell casting
@@ -773,6 +789,7 @@ class MovementInfo
         uint32 GetFallTime() const { return fallTime; }
         void ChangeOrientation(float o) { pos.o = o; }
         void ChangePosition(float x, float y, float z, float o) { pos.x = x; pos.y = y; pos.z = z; pos.o = o; }
+        void ChangeTransportPosition(float x, float y, float z, float o) { t_pos.x = x; t_pos.y = y; t_pos.z = z; t_pos.o = o; }
         void UpdateTime(uint32 _time) { time = _time; }
 
         struct JumpInfo
@@ -1258,23 +1275,23 @@ class  VehicleKit;
 class MANGOS_DLL_SPEC Unit : public WorldObject
 {
     public:
-        typedef std::multimap< uint32, SpellAuraHolderPtr> SpellAuraHolderMap;
+        typedef UNORDERED_MULTIMAP<uint32 /*spellId*/, SpellAuraHolderPtr> SpellAuraHolderMap;
         typedef std::pair<SpellAuraHolderMap::iterator, SpellAuraHolderMap::iterator> SpellAuraHolderBounds;
         typedef std::pair<SpellAuraHolderMap::const_iterator, SpellAuraHolderMap::const_iterator> SpellAuraHolderConstBounds;
         typedef std::queue<SpellAuraHolderPtr> SpellAuraHolderQueue;
-        typedef ACE_Based::LockedVector<AuraPair> AuraList;
+        typedef std::list<AuraPair> AuraList;
         typedef std::list<DiminishingReturn> Diminishing;
-        typedef std::set<ObjectGuid> ComboPointHolderSet;
-        typedef ACE_Based::LockedMap<uint8, SpellAuraHolderPtr> VisibleAuraMap;
-        typedef std::map<SpellEntry const*, ObjectGuid> SingleCastSpellTargetMap;
-        typedef std::set<uint32> SpellIdSet;
+        typedef UNORDERED_SET<ObjectGuid> ComboPointHolderSet;
+        typedef std::vector<SpellAuraHolderPtr> VisibleAuraMap;
+        typedef UNORDERED_MAP<SpellEntry const*, ObjectGuid /*targetGuid*/> TrackedAuraTargetMap;
+        typedef UNORDERED_SET<uint32> SpellIdSet;
 
         virtual ~Unit ( );
 
         void AddToWorld();
-        void RemoveFromWorld();
+        virtual void RemoveFromWorld(bool remove);
 
-        void CleanupsBeforeDelete();                        // used in ~Creature/~Player (or before mass creature delete to remove cross-references to already deleted units)
+        virtual void CleanupsBeforeDelete();                // used in ~Creature/~Player (or before mass creature delete to remove cross-references to already deleted units)
 
         float GetObjectBoundingRadius() const               // overwrite WorldObject version
         {
@@ -1346,7 +1363,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         uint32 getLevel() const { return GetUInt32Value(UNIT_FIELD_LEVEL); }
         virtual uint32 GetLevelForTarget(Unit const* /*target*/) const { return getLevel(); }
         void SetLevel(uint32 lvl);
-        uint8 getRace() const;
+        virtual uint8 getRace() const { return GetByteValue(UNIT_FIELD_BYTES_0, 0); }
         uint32 getRaceMask() const { return getRace() ? 1 << (getRace()-1) : 0; }
         uint8 getClass() const { return GetByteValue(UNIT_FIELD_BYTES_0, 1); }
         uint32 getClassMask() const { return 1 << (getClass()-1); }
@@ -1392,9 +1409,9 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         uint32 GetOriginalFaction() const { return m_originalFaction; }
         void setFaction(uint32 faction) { if (!m_originalFaction) m_originalFaction = faction; SetUInt32Value(UNIT_FIELD_FACTIONTEMPLATE, faction ); }
         FactionTemplateEntry const* getFactionTemplateEntry() const;
-        bool IsHostileTo(Unit const* unit) const;
+        virtual bool IsHostileTo(Unit const* unit) const override;
         bool IsHostileToPlayers() const;
-        bool IsFriendlyTo(Unit const* unit) const;
+        virtual bool IsFriendlyTo(Unit const* unit) const override;
         bool IsNeutralToAll() const;
         bool IsContestedGuard() const
         {
@@ -1427,9 +1444,6 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void Mount(uint32 mount, uint32 spellId = 0, uint32 vehicleId = 0, uint32 creatureEntry = 0);
         void Unmount(bool from_aura = false);
 
-        VehicleInfo* GetVehicleInfo() { return m_vehicleInfo; }
-        bool IsVehicle() const { return m_vehicleInfo != NULL; }
-        void SetVehicleId(uint32 entry);
 
         uint16 GetMaxSkillValueForLevel(Unit const* target = NULL) const { return (target ? GetLevelForTarget(target) : getLevel()) * 5; }
         void DealDamageMods(DamageInfo* damageInfo);
@@ -1475,10 +1489,12 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         uint32 GetRangedDamageReduction(uint32 damage) const { return GetCombatRatingDamageReduction(CR_CRIT_TAKEN_MELEE, 2.0f, 100.0f, damage); }
         uint32 GetSpellDamageReduction(uint32 damage) const { return GetCombatRatingDamageReduction(CR_CRIT_TAKEN_MELEE, 2.0f, 100.0f, damage); }
 
-        float  MeleeSpellMissChance(Unit *pVictim, WeaponAttackType attType, int32 skillDiff, SpellEntry const *spell);
-        SpellMissInfo MeleeSpellHitResult(Unit *pVictim, SpellEntry const *spell);
-        SpellMissInfo MagicSpellHitResult(Unit *pVictim, SpellEntry const *spell);
-        SpellMissInfo SpellHitResult(Unit *pVictim, SpellEntry const *spell, bool canReflect = false);
+        float  MeleeSpellMissChance(Unit* pVictim, WeaponAttackType attType, int32 skillDiff, SpellEntry const *spell);
+        SpellMissInfo MeleeSpellHitResult(Unit* pVictim, SpellEntry const* spell);
+        SpellMissInfo MagicSpellHitResult(Unit* pVictim, SpellEntry const* spell);
+        SpellMissInfo SpellHitResult(Unit* pVictim, SpellEntry const* spell);
+        SpellMissInfo SpellResistResult(Unit* pVictim, SpellEntry const* spell);
+        uint32 CalculateBaseSpellHitChance(Unit* pVictim);
 
         float GetUnitDodgeChance()    const;
         float GetUnitParryChance()    const;
@@ -1593,7 +1609,6 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void MonsterMoveToDestination(float x, float y, float z, float o, float speed, float height, bool isKnockBack = false, Unit* target = NULL);
         // recommend use MonsterMove/MonsterMoveWithSpeed for most case that correctly work with movegens
         // if used additional args in ... part then floats must explicitly casted to double
-        void SendMonsterMoveTransport(WorldObject *transport, SplineType type, SplineFlags flags, uint32 moveTime, ...);
         virtual bool SetPosition(float x, float y, float z, float orientation, bool teleport = false);
         virtual void SetFallInformation(uint32 time, float z) {};
 
@@ -1725,14 +1740,14 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
 
         // removing specific aura stacks by diff reasons and selections
         void RemoveAurasDueToSpell(uint32 spellId, SpellAuraHolderPtr except = SpellAuraHolderPtr(NULL), AuraRemoveMode mode = AURA_REMOVE_BY_DEFAULT);
-        void RemoveAurasDueToItemSpell(Item* castItem,uint32 spellId);
+        void RemoveAurasDueToItemSpell(Item* castItem, uint32 spellId);
         void RemoveAurasByCasterSpell(uint32 spellId, ObjectGuid casterGuid, AuraRemoveMode mode = AURA_REMOVE_BY_DEFAULT);
-        void RemoveAurasDueToSpellBySteal(uint32 spellId, ObjectGuid casterGuid, Unit *stealer);
+        void RemoveAurasDueToSpellBySteal(uint32 spellId, ObjectGuid casterGuid, Unit* stealer);
         void RemoveAurasDueToSpellByCancel(uint32 spellId);
         void RemoveAllGroupBuffsFromCaster(ObjectGuid guidCaster);
 
         // removing unknown aura stacks by diff reasons and selections
-        void RemoveNotOwnSingleTargetAuras(uint32 newPhase = 0x0);
+        void RemoveNotOwnTrackedTargetAuras(uint32 newPhase = 0x0);
         void RemoveAurasAtMechanicImmunity(uint32 mechMask, uint32 exceptSpellId, bool non_positive = false);
         void RemoveAurasBySpellMechanic(uint32 mechMask);
         void RemoveSpellsCausingAura(AuraType auraType);
@@ -1878,7 +1893,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         bool isVisibleForOrDetect(Unit const* u, WorldObject const* viewPoint, bool detect, bool inVisibleList = false, bool is3dDistance = true, bool skipLOScheck = false) const;
         bool canDetectInvisibilityOf(Unit const* u) const;
         void SetPhaseMask(uint32 newPhaseMask, bool update);// overwrite WorldObject::SetPhaseMask
-        bool IsVisibleTargetForSpell(WorldObject const* caster, SpellEntry const* spellInfo) const;
+        bool IsVisibleTargetForSpell(WorldObject const* caster, SpellEntry const* spellInfo, WorldLocation const* location = NULL) const;
 
         // virtual functions for all world objects types
         bool isVisibleForInState(Player const* u, WorldObject const* viewPoint, bool inVisibleList) const;
@@ -1886,8 +1901,9 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         virtual bool IsVisibleInGridForPlayer(Player* pl) const = 0;
         bool isInvisibleForAlive() const;
 
-        SingleCastSpellTargetMap      & GetSingleCastSpellTargets()       { return m_singleCastSpellTargets; }
-        SingleCastSpellTargetMap const& GetSingleCastSpellTargets() const { return m_singleCastSpellTargets; }
+        TrackedAuraTargetMap&       GetTrackedAuraTargets(TrackedAuraType type)       { return m_trackedAuraTargets[type]; }
+        TrackedAuraTargetMap const& GetTrackedAuraTargets(TrackedAuraType type) const { return m_trackedAuraTargets[type]; }
+
         SpellImmuneList m_spellImmune[MAX_SPELL_IMMUNITY];
 
         // Threat related methods
@@ -1897,7 +1913,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void DeleteThreatList();
         bool IsSecondChoiceTarget(Unit* pTarget, bool checkThreatArea) const;
         bool SelectHostileTarget(bool withEvade = true);
-        void TauntApply(Unit* pVictim);
+        bool TauntApply(Unit* pVictim, bool isSingleEffect = false);
         void TauntFadeOut(Unit *taunter);
         ThreatManager& getThreatManager() { return m_ThreatManager; }
         ThreatManager const& getThreatManager() const { return m_ThreatManager; }
@@ -1909,7 +1925,7 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         SpellAuraHolderPtr GetVisibleAura(uint8 slot) const;
         void SetVisibleAura(uint8 slot, SpellAuraHolderPtr holder);
         VisibleAuraMap const& GetVisibleAuras() const { return m_visibleAuras; }
-        uint8 GetVisibleAurasCount() const { return m_visibleAuras.size(); }
+        uint8 GetVisibleAurasCount() const;
 
         Aura* GetAura(uint32 spellId, SpellEffectIndex effindex);
         Aura* GetAura(AuraType type, SpellFamily family, ClassFamilyMask const& classMask, ObjectGuid casterGuid = ObjectGuid());
@@ -2122,9 +2138,8 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         void ClearComboPoints();
 
         ///----------Pet responses methods-----------------
-        void SendPetCastFail(uint32 spellid, SpellCastResult msg);
-        void SendPetActionFeedback (uint8 msg);
-        void SendPetTalk (uint32 pettalk);
+        void SendPetActionFeedback(uint8 msg);
+        void SendPetTalk(uint32 pettalk);
         void SendPetAIReaction();
         ///----------End of Pet responses methods----------
         void DoPetAction(Player* owner, uint8 flag, uint32 spellid, ObjectGuid petGuid, ObjectGuid targetGuid);
@@ -2170,15 +2185,19 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         // Vehicle system (over-aura operation)
         void EnterVehicle(Unit* base, int8 seatId = -1);
         void EnterVehicle(VehicleKitPtr vehicle, int8 seatId = -1);
-        void ExitVehicle();
+        void ExitVehicle(bool forceDismount = false);
         // Vehicle system (direct operation)
         void _EnterVehicle(VehicleKitPtr vehicle, int8 seatId = -1);
-        void _ExitVehicle();
+        void _ExitVehicle(bool forceDismount = false);
 
         void ChangeSeat(int8 seatId, bool next = true);
         VehicleKitPtr GetVehicle() const { return m_pVehicle; }
         VehicleKitPtr GetVehicleKit() const { return m_pVehicleKit; }
         void RemoveVehicleKit();
+
+        VehicleEntry const* GetVehicleInfo() const;
+        virtual bool IsVehicle() const override { return GetVehicleInfo() != NULL; }
+        void SetVehicleId(uint32 entry);
 
         void ScheduleAINotify(uint32 delay);
         bool IsAINotifyScheduled() const { return m_AINotifyScheduled;}
@@ -2204,7 +2223,8 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         SpellAuraHolderMap m_spellAuraHolders;
         SpellAuraHolderQueue m_deletedHolders;
 
-        SingleCastSpellTargetMap m_singleCastSpellTargets;  // casted by unit single per-caster auras
+        // Store Auras for which the target must be tracked
+        TrackedAuraTargetMap m_trackedAuraTargets[MAX_TRACKED_AURA_TYPES];
 
         GuidList m_dynObjGUIDs;
 
@@ -2241,7 +2261,6 @@ class MANGOS_DLL_SPEC Unit : public WorldObject
         // Transports
         Transport* m_transport;
 
-        VehicleInfo* m_vehicleInfo;
         VehicleKitPtr m_pVehicleKit;
         VehicleKitPtr m_pVehicle;
 

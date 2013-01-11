@@ -26,6 +26,11 @@
 #include "Dynamic/FactoryHolder.h"
 #include "MotionMaster.h"
 #include "StateMgr.h"
+#include "Timer.h"
+
+class Unit;
+class Creature;
+class Player;
 
 class MANGOS_DLL_SPEC MovementGenerator : public UnitAction
 {
@@ -47,8 +52,6 @@ class MANGOS_DLL_SPEC MovementGenerator : public UnitAction
         virtual MovementGeneratorType GetMovementGeneratorType() const = 0;
 
         virtual void UnitSpeedChanged() { }
-
-        virtual void UpdateFinalDistance(float /*fDistance*/) { }
 
         // used by Evade code for select point to evade with expected restart default movement
         virtual bool GetResetPosition(Unit &, float& /*x*/, float& /*y*/, float& /*z*/) { return false; }

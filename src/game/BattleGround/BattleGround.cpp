@@ -268,7 +268,6 @@ BattleGround::BattleGround()
     m_StartTime         = 0;
     m_Events            = 0;
     m_IsRated           = false;
-    m_BuffChange        = false;
     m_IsRandom          = false;
     m_Name              = "";
     m_LevelMin          = 0;
@@ -301,8 +300,8 @@ BattleGround::BattleGround()
     m_ArenaTeamRatingChanges[TEAM_INDEX_ALLIANCE]   = 0;
     m_ArenaTeamRatingChanges[TEAM_INDEX_HORDE]      = 0;
 
-    m_BgRaids[TEAM_INDEX_ALLIANCE]          = NULL;
-    m_BgRaids[TEAM_INDEX_HORDE]             = NULL;
+    m_BgRaids[TEAM_INDEX_ALLIANCE]          = ObjectGuid();
+    m_BgRaids[TEAM_INDEX_HORDE]             = ObjectGuid();
 
     m_PlayersCount[TEAM_INDEX_ALLIANCE]     = 0;
     m_PlayersCount[TEAM_INDEX_HORDE]        = 0;
@@ -331,10 +330,6 @@ BattleGround::~BattleGround()
 {
     // remove objects and creatures
     // (this is done automatically in mapmanager update, when the instance is reset after the reset time)
-
-    int size = m_BgObjects.size();
-    for (int i = 0; i < size; ++i)
-        DelObject(i);
 
     sBattleGroundMgr.RemoveBattleGround(GetInstanceID(), GetTypeID());
 
@@ -884,7 +879,7 @@ void BattleGround::EndBattleGround(Team winner)
     {
         winner_arena_team = sObjectMgr.GetArenaTeamById(GetArenaTeamIdForTeam(winner));
         loser_arena_team = sObjectMgr.GetArenaTeamById(GetArenaTeamIdForTeam(GetOtherTeam(winner)));
-        if (winner_arena_team && loser_arena_team)
+        if (winner_arena_team && loser_arena_team && winner_arena_team->GetId() != loser_arena_team->GetId())
         {
             loser_rating = loser_arena_team->GetBattleRating();
             winner_rating = winner_arena_team->GetBattleRating();
@@ -946,7 +941,7 @@ void BattleGround::EndBattleGround(Team winner)
         // if(!team) team = plr->GetTeam();
 
         // per player calculation
-        if (isArena() && isRated() && winner_arena_team && loser_arena_team)
+        if (isArena() && isRated() && winner_arena_team && loser_arena_team && winner_arena_team->GetId() != loser_arena_team->GetId())
         {
             if (team == winner)
             {
@@ -1014,7 +1009,7 @@ void BattleGround::EndBattleGround(Team winner)
         plr->GetAchievementMgr().UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_COMPLETE_BATTLEGROUND, 1);
     }
 
-    if (isArena() && isRated() && winner_arena_team && loser_arena_team)
+    if (isArena() && isRated() && winner_arena_team && loser_arena_team && winner_arena_team->GetId() != loser_arena_team->GetId())
     {
         // update arena points only after increasing the player's match count!
         // obsolete: winner_arena_team->UpdateArenaPointsHelper();
@@ -1494,9 +1489,22 @@ void BattleGround::AddOrSetPlayerToCorrectBgGroup(Player* plr, ObjectGuid plr_gu
     }
     else                                                    // first player joined
     {
-        group = new Group;
-        SetBgRaid(team, group);
-        group->Create(plr_guid, plr->GetName());
+        group = new Group(GROUPTYPE_BG);
+
+        // Need first set BG type for group, even his be wrong type
+        group->SetBattlegroundGroup(this);
+
+        if (group->Create(plr_guid, plr->GetName()))
+        {
+            sObjectMgr.AddGroup(group);
+            SetBgRaid(team, group);
+        }
+        else
+        {
+            delete group;
+            return;
+        }
+
     }
 }
 
@@ -1701,6 +1709,9 @@ void BattleGround::OnObjectDBLoad(Creature* creature)
     m_EventObjects[MAKE_PAIR32(eventId.event1, eventId.event2)].creatures.push_back(creature->GetObjectGuid());
     if (!IsActiveEvent(eventId.event1, eventId.event2))
         SpawnBGCreature(creature->GetObjectGuid(), RESPAWN_ONE_DAY);
+
+    if (BattleGroundSpawnFactions faction = GetSpawnFactionFor(creature->GetObjectGuid()))
+        creature->setFaction(faction);
 }
 
 ObjectGuid BattleGround::GetSingleCreatureGuid(uint8 event1, uint8 event2)
@@ -1727,6 +1738,9 @@ void BattleGround::OnObjectDBLoad(GameObject* obj)
         if (GetStatus() >= STATUS_IN_PROGRESS && IsDoor(eventId.event1, eventId.event2))
             DoorOpen(obj->GetObjectGuid());
     }
+
+    if (Team team = GetSpawnTeamFor(obj->GetObjectGuid()))
+        obj->SetTeam(team);
 }
 
 bool BattleGround::IsDoor(uint8 event1, uint8 event2)
@@ -1817,6 +1831,8 @@ void BattleGround::SpawnBGObject(ObjectGuid guid, uint32 respawntime)
         if (obj->GetGOInfo()->type == GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING)
             obj->Rebuild(NULL);
     }
+    if (Team team = GetSpawnTeamFor(obj->GetObjectGuid()))
+        obj->SetTeam(team);
 }
 
 void BattleGround::SpawnBGCreature(ObjectGuid guid, uint32 respawntime)
@@ -1841,7 +1857,7 @@ void BattleGround::SpawnBGCreature(ObjectGuid guid, uint32 respawntime)
     {
         map->Add(obj);
         obj->SetRespawnDelay(respawntime);
-        if (obj->GetObjectGuid().IsVehicle())
+        if (obj->IsVehicle())
         {
             if (obj->GetVehicleKit())
                 obj->GetVehicleKit()->RemoveAllPassengers();
@@ -1853,6 +1869,25 @@ void BattleGround::SpawnBGCreature(ObjectGuid guid, uint32 respawntime)
         obj->GetRespawnCoord(x,y,z,&o);
         obj->NearTeleportTo(x,y,z,o);
     }
+    if (BattleGroundSpawnFactions faction = GetSpawnFactionFor(obj->GetObjectGuid()))
+        obj->setFaction(faction);
+}
+
+BattleGroundSpawnFactions BattleGround::GetSpawnFactionFor(ObjectGuid const& guid) const
+{
+    switch (GetSpawnTeamFor(guid))
+    {
+        case HORDE:
+            return SPAWN_FACTION_HORDE;
+        case ALLIANCE:
+            return SPAWN_FACTION_ALLIANCE;
+        case TEAM_INVALID:
+            return SPAWN_FACTION_NEUTRAL;
+        case TEAM_NONE:
+        default:
+            break;
+    }
+    return SPAWN_FACTION_UNCHANGED;
 }
 
 bool BattleGround::DelObject(uint32 type)
@@ -1966,45 +2001,7 @@ void BattleGround::HandleTriggerBuff(ObjectGuid go_guid)
     if (!obj || obj->GetGoType() != GAMEOBJECT_TYPE_TRAP || !obj->isSpawned())
         return;
 
-    // static buffs are already handled just by database and don't need
-    // battleground code
-    if (!m_BuffChange)
-    {
-        obj->SetLootState(GO_JUST_DEACTIVATED);             // can be despawned or destroyed
-        return;
-    }
-
-    // change buff type, when buff is used:
-    // TODO this can be done when poolsystem works for instances
-    int32 index = m_BgObjects.size() - 1;
-    while (index >= 0 && m_BgObjects[index] != go_guid)
-        --index;
-    if (index < 0)
-    {
-        sLog.outError("BattleGround (Type: %u) has buff trigger %s GOType: %u but it hasn't that object in its internal data",
-                      GetTypeID(), go_guid.GetString().c_str(), obj->GetGoType());
-        return;
-    }
-
-    // randomly select new buff
-    uint8 buff = urand(0, 2);
-    uint32 entry = obj->GetEntry();
-    if (m_BuffChange && entry != Buff_Entries[buff])
-    {
-        // despawn current buff
-        SpawnBGObject(m_BgObjects[index], RESPAWN_ONE_DAY);
-        // set index for new one
-        for (uint8 currBuffTypeIndex = 0; currBuffTypeIndex < 3; ++currBuffTypeIndex)
-        {
-            if (entry == Buff_Entries[currBuffTypeIndex])
-            {
-                index -= currBuffTypeIndex;
-                index += buff;
-            }
-        }
-    }
-
-    SpawnBGObject(m_BgObjects[index], BUFF_RESPAWN_TIME);
+    obj->SetLootState(GO_JUST_DEACTIVATED);             // can be despawned or destroyed
 }
 
 void BattleGround::HandleKillPlayer(Player* player, Player* killer)
@@ -2018,7 +2015,9 @@ void BattleGround::HandleKillPlayer(Player* player, Player* killer)
         UpdatePlayerScore(killer, SCORE_HONORABLE_KILLS, 1);
         UpdatePlayerScore(killer, SCORE_KILLING_BLOWS, 1);
 
+        killer->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_HONORABLE_KILL, 1);
         killer->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_HONORABLE_KILL_AT_AREA, 1);
+        killer->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_GET_KILLING_BLOWS, 1);
 
         for (BattleGroundPlayerMap::const_iterator itr = m_Players.begin(); itr != m_Players.end(); ++itr)
         {
@@ -2100,17 +2099,25 @@ void BattleGround::CheckArenaWinConditions()
         EndBattleGround(ALLIANCE);
 }
 
+Group* BattleGround::GetBgRaid(Team team)
+{
+    return sObjectMgr.GetGroup(m_BgRaids[GetTeamIndex(team)]);
+}
+
 void BattleGround::SetBgRaid(Team team, Group* bg_raid)
 {
-    Group*& old_raid = m_BgRaids[GetTeamIndex(team)];
+    Group* old_raid = GetBgRaid(team);
 
     if (old_raid)
         old_raid->SetBattlegroundGroup(NULL);
 
     if (bg_raid)
+    {
         bg_raid->SetBattlegroundGroup(this);
-
-    old_raid = bg_raid;
+        m_BgRaids[GetTeamIndex(team)] = bg_raid->GetObjectGuid();
+    }
+    else
+        m_BgRaids[GetTeamIndex(team)] = ObjectGuid();
 }
 
 WorldSafeLocsEntry const* BattleGround::GetClosestGraveYard(Player* player)
