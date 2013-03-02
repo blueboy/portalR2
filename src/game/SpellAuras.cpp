@@ -33,7 +33,7 @@
 #include "Group.h"
 #include "UpdateData.h"
 #include "ObjectAccessor.h"
-#include "Policies/SingletonImp.h"
+#include "Policies/Singleton.h"
 #include "Totem.h"
 #include "Creature.h"
 #include "Formulas.h"
@@ -979,18 +979,10 @@ void Aura::PersistentAreaAuraUpdate(uint32 diff)
 
     // remove the aura if its caster or the dynamic object causing it was removed
     // or if the target moves too far from the dynamic object
-    if (Unit *caster = GetCaster())
+    if (Unit* pCaster = GetCaster())
     {
-        DynamicObject *dynObj = caster->GetDynObject(GetId(), GetEffIndex());
-        if (dynObj)
-        {
-            if (GetHolder()->IsPermanent() && !GetTarget()->IsWithinDistInMap(dynObj, dynObj->GetRadius()))
-            {
-                remove = true;
-                dynObj->RemoveAffected(GetTarget());        // let later reapply if target return to range
-            }
-        }
-        else
+        DynamicObject* dynObj = pCaster->GetEffectiveDynObject(GetId(), GetEffIndex(), GetTarget());
+        if (!dynObj)
             remove = true;
     }
     else
@@ -1477,18 +1469,17 @@ void Aura::TriggerSpell()
                     case 24834:                             // Shadow Bolt Whirl
                     {
                         uint32 spellForTick[8] = { 24820, 24821, 24822, 24823, 24835, 24836, 24837, 24838 };
-                        uint32 tick = GetAuraTicks();
-                        if (tick < 8)
-                        {
-                            trigger_spell_id = spellForTick[tick];
+                        uint32 tick = (GetAuraTicks() + 7/*-1*/) % 8;
 
-                            // casted in left/right (but triggered spell have wide forward cone)
-                            float forward = target->GetOrientation();
-                            float angle = target->GetOrientation() + ( tick % 2 == 0 ? M_PI_F / 2 : - M_PI_F / 2);
-                            target->SetOrientation(angle);
-                            triggerTarget->CastSpell(triggerTarget, trigger_spell_id, true, NULL, this, casterGUID);
-                            target->SetOrientation(forward);
-                        }
+                        // casted in left/right (but triggered spell have wide forward cone)
+                        float forward = target->GetOrientation();
+                        if (tick <= 3)
+                            target->SetOrientation(forward + 0.75f * M_PI_F - tick * M_PI_F / 8);       // Left
+                        else
+                            target->SetOrientation(forward - 0.75f * M_PI_F + (8 - tick) * M_PI_F / 8); // Right
+
+                        triggerTarget->CastSpell(triggerTarget, spellForTick[tick], true, NULL, this, casterGUID);
+                        target->SetOrientation(forward);
                         return;
                     }
 //                    // Stink Trap
@@ -1751,8 +1742,17 @@ void Aura::TriggerSpell()
 //                    case 36556: break;
 //                    // Cursed Scarab Despawn Periodic
 //                    case 36561: break;
-//                    // Vision Guide
-//                    case 36573: break;
+                    case 36573:                             // Vision Guide
+                    {
+                    // FIXME - this must be maked over 37715 reconstruction (spell_dbc)
+                        if (GetAuraTicks() == 10 && target->GetTypeId() == TYPEID_PLAYER)
+                        {
+                            ((Player*)target)->AreaExploredOrEventHappens(10525);
+                            target->RemoveAurasDueToSpell(36573);
+                        }
+
+                        return;
+                    }
 //                    // Cannon Charging (platform)
 //                    case 36785: break;
 //                    // Cannon Charging (self)
@@ -2514,6 +2514,11 @@ void Aura::HandleAuraDummy(bool apply, bool Real)
                         target->RemoveAurasDueToSpell(32346);
                         return;
                     }
+                    case 36587:                             // Vision Guide
+                    {
+                        target->CastSpell(target, 36573, true, NULL, this);
+                        return;
+                    }
                     // Gender spells
                     case 38224:                             // Illidari Agent Illusion
                     case 37096:                             // Blood Elf Illusion
@@ -3112,6 +3117,11 @@ void Aura::HandleAuraDummy(bool apply, bool Real)
             {
                 // Defensive Aura
                 target->RemoveAurasDueToSpell(41105);
+                return;
+            }
+            case 42385:                                     // Alcaz Survey Aura
+            {
+                target->CastSpell(target, 42316, true, NULL, this);
                 return;
             }
             case 42454:                                     // Captured Totem
@@ -5873,8 +5883,8 @@ void Aura::HandleModMechanicImmunity(bool apply, bool /*Real*/)
         }
     }
     // Heroic Fury (Intercept cooldown remove)
-    else if (apply && GetSpellProto()->Id == 60970 && target->GetTypeId() == TYPEID_PLAYER)
-        ((Player*)target)->RemoveSpellCooldown(20252, true);
+    else if (apply && GetSpellProto()->Id == 60970)
+        target->RemoveSpellCooldown(20252, true);
 }
 
 void Aura::HandleModMechanicImmunityMask(bool apply, bool /*Real*/)
@@ -8720,27 +8730,25 @@ void Aura::PeriodicTick()
 
             pCaster->DealDamageMods(&damageInfo);
 
+            uint32 overkill = damageInfo.damage > target->GetHealth() ? damageInfo.damage - target->GetHealth() : 0;
+            SpellPeriodicAuraLogInfo pInfo(this, damageInfo.damage, overkill, damageInfo.absorb, damageInfo.resist, 0.0f, isCrit);
+            target->SendPeriodicAuraLog(&pInfo);
+
             // Set trigger flag
             damageInfo.procAttacker = PROC_FLAG_ON_DO_PERIODIC; //  | PROC_FLAG_SUCCESSFUL_HARMFUL_SPELL_HIT;
             damageInfo.procVictim   = PROC_FLAG_ON_TAKE_PERIODIC;// | PROC_FLAG_TAKEN_HARMFUL_SPELL_HIT;
             damageInfo.procEx = isCrit ? PROC_EX_CRITICAL_HIT : PROC_EX_NORMAL_HIT;
 
-            damageInfo.damage = (damageInfo.damage <= damageInfo.absorb + damageInfo.resist) ? 0 : (damageInfo.damage - damageInfo.absorb - damageInfo.resist);
-
-            if (damageInfo.damage <= 0)
-                damageInfo.procEx &= ~PROC_EX_DIRECT_DAMAGE;
+            // damage may be changed in DealDamageMods above, so change flags
+            if (!damageInfo.damage)
+                damageInfo.procEx     &= ~PROC_EX_DIRECT_DAMAGE;
             else
-                damageInfo.procEx |= PROC_EX_DIRECT_DAMAGE;
-
-            uint32 overkill = damageInfo.damage > target->GetHealth() ? damageInfo.damage - target->GetHealth() : 0;
-            SpellPeriodicAuraLogInfo pInfo(this, damageInfo.damage, overkill, damageInfo.absorb, damageInfo.resist, 0.0f, isCrit);
-            target->SendPeriodicAuraLog(&pInfo);
-
-            if (damageInfo.damage)
+            {
                 damageInfo.procVictim |= PROC_FLAG_TAKEN_ANY_DAMAGE;
+                damageInfo.procEx     |= PROC_EX_DIRECT_DAMAGE;
+            }
 
             pCaster->ProcDamageAndSpell(&damageInfo);
-
             pCaster->DealDamage(target, &damageInfo, true);
 
             // Drain Soul (chance soul shard)
@@ -8819,16 +8827,19 @@ void Aura::PeriodicTick()
 
             pCaster->SendSpellNonMeleeDamageLog(target, GetId(), damageInfo.damage, damageInfo.SchoolMask(), damageInfo.absorb, damageInfo.resist, false, 0, isCrit);
 
-            float multiplier = spellProto->EffectMultipleValue[GetEffIndex()] > 0 ? spellProto->EffectMultipleValue[GetEffIndex()] : 1;
-
             // Set trigger flag
             damageInfo.procAttacker = PROC_FLAG_ON_DO_PERIODIC; //  | PROC_FLAG_SUCCESSFUL_HARMFUL_SPELL_HIT;
             damageInfo.procVictim   = PROC_FLAG_ON_TAKE_PERIODIC;// | PROC_FLAG_TAKEN_HARMFUL_SPELL_HIT;
             damageInfo.procEx = isCrit ? PROC_EX_CRITICAL_HIT : PROC_EX_NORMAL_HIT;
 
-            damageInfo.damage = (damageInfo.damage <= damageInfo.absorb + damageInfo.resist) ? 0 : (damageInfo.damage - damageInfo.absorb - damageInfo.resist);
-            if (damageInfo.damage)
+            // damage may be changed in DealDamageMods above, so change flags
+            if (!damageInfo.damage)
+                damageInfo.procEx     &= ~PROC_EX_DIRECT_DAMAGE;
+            else
+            {
                 damageInfo.procVictim |= PROC_FLAG_TAKEN_ANY_DAMAGE;
+                damageInfo.procEx     |= PROC_EX_DIRECT_DAMAGE;
+            }
 
             pCaster->ProcDamageAndSpell(&damageInfo);
             int32 new_damage = pCaster->DealDamage(target, &damageInfo, false);
@@ -8839,7 +8850,9 @@ void Aura::PeriodicTick()
                         if (spell->m_spellInfo->Id == GetId())
                             spell->cancel();
 
-            if (Player *modOwner = pCaster->GetSpellModOwner())
+            float multiplier = spellProto->EffectMultipleValue[GetEffIndex()] > 0 ? spellProto->EffectMultipleValue[GetEffIndex()] : 1;
+
+            if (Player* modOwner = pCaster->GetSpellModOwner())
                 modOwner->ApplySpellMod(GetId(), SPELLMOD_MULTIPLE_VALUE, multiplier);
 
             int32 heal = pCaster->SpellHealingBonusTaken(pCaster, spellProto, int32(new_damage * multiplier), DOT, GetStackAmount());
@@ -10571,8 +10584,12 @@ m_permanent(false), m_isRemovedOnShapeLost(true), m_deleted(false), m_in_use(0)
         case 67107:                                         // Nether Power (ToC: Lord Jaraxxus)
         case 67108:                                         // Nether Power (ToC: Lord Jaraxxus)
         case 71564:                                         // Deadly Precision
+        case 71756:                                         // Ball of Flames Proc (Blood Prince Council)
         case 74396:                                         // Fingers of Frost
         case 70672:                                         // Gaseous Bloat (Putricide)
+        case 72455:
+        case 72832:
+        case 72833:
             m_stackAmount = m_spellProto->StackAmount;
             break;
     }
@@ -10677,7 +10694,7 @@ void SpellAuraHolder::_AddSpellAuraHolder()
         if (m_spellProto->HasAttribute(SPELL_ATTR_DISABLED_WHILE_ACTIVE))
         {
             Item* castItem = m_castItemGuid ? ((Player*)caster)->GetItemByGuid(m_castItemGuid) : NULL;
-            ((Player*)caster)->AddSpellAndCategoryCooldowns(m_spellProto,castItem ? castItem->GetEntry() : 0,true);
+            caster->AddSpellAndCategoryCooldowns(m_spellProto,castItem ? castItem->GetEntry() : 0,true);
         }
     }
 
@@ -11701,25 +11718,8 @@ void SpellAuraHolder::HandleSpellSpecificBoosts(bool apply)
         }
         case SPELLFAMILY_DRUID:
         {
-            // Rejuvenation
-            if (GetSpellProto()->GetSpellFamilyFlags().test<CF_DRUID_REJUVENATION>())
-            {
-                Unit* caster = GetCaster();
-                if (!caster)
-                    return;
-
-                if (caster->HasAura(64760))                 // Item - Druid T8 Restoration 4P Bonus
-                {
-                    Aura* aura = GetAuraByEffectIndex(EFFECT_INDEX_0);
-                    if (!aura)
-                        return;
-
-                    int32 heal = aura->GetModifier()->m_amount;
-                    caster->CastCustomSpell(m_target, 64801, &heal, NULL, NULL, true, NULL);
-                }
-            }
             // Rip
-            else if (GetSpellProto()->GetSpellFamilyFlags().test<CF_DRUID_RIP>())
+            if (GetSpellProto()->GetSpellFamilyFlags().test<CF_DRUID_RIP>())
             {
                 Unit* caster = GetCaster();
                 if (!caster)
