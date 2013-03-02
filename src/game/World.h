@@ -216,6 +216,8 @@ enum eConfigUInt32Values
     CONFIG_UINT32_VMSS_FORCEUNLOADDELAY,
     CONFIG_UINT32_WORLD_STATE_EXPIRETIME,
     CONFIG_UINT32_OBJECTLOADINGSPLITTER_ALLOWEDTIME,
+    CONFIG_UINT32_POSITION_UPDATE_DELAY,
+    CONFIG_UINT32_RESIST_CALC_METHOD,
     CONFIG_UINT32_VALUE_COUNT
 };
 
@@ -227,6 +229,7 @@ enum eConfigInt32Values
     CONFIG_INT32_ARENA_STARTPERSONALRATING,
     CONFIG_INT32_QUEST_LOW_LEVEL_HIDE_DIFF,
     CONFIG_INT32_QUEST_HIGH_LEVEL_HIDE_DIFF,
+    CONFIG_INT32_CALENDAR_REMOVE_EXPIRED_EVENTS_DELAY,
     CONFIG_INT32_VALUE_COUNT
 };
 
@@ -400,6 +403,7 @@ enum eConfigBoolValues
     CONFIG_BOOL_RESILENCE_ALTERNATIVE_CALCULATION,
     CONFIG_BOOL_BLINK_ANIMATION_TYPE,
     CONFIG_BOOL_FACTION_AND_RACE_CHANGE_WITHOUT_RENAMING,
+    CONFIG_BOOL_RESIST_ADD_BY_OVER_LEVEL,
     CONFIG_BOOL_VALUE_COUNT
 };
 
@@ -638,7 +642,7 @@ class World
         static float GetVisibleUnitGreyDistance()           { return m_VisibleUnitGreyDistance;       }
         static float GetVisibleObjectGreyDistance()         { return m_VisibleObjectGreyDistance;     }
 
-        static float GetRelocationLowerLimitSq()            { return m_relocation_lower_limit_sq; }
+        static float GetRelocationLowerLimit()              { return m_relocation_lower_limit; }
         static uint32 GetRelocationAINotifyDelay()          { return m_relocation_ai_notify_delay; }
 
         void ProcessCliCommands();
@@ -737,7 +741,7 @@ class World
         static float m_VisibleUnitGreyDistance;
         static float m_VisibleObjectGreyDistance;
 
-        static float  m_relocation_lower_limit_sq;
+        static float  m_relocation_lower_limit;
         static uint32 m_relocation_ai_notify_delay;
 
         // CLI command holder to be thread safe

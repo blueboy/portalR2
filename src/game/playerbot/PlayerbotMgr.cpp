@@ -608,6 +608,8 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                         }
                         return;
                 }
+                default:
+                    break;
             }
             return;
         } /* EMOTE ends here */
@@ -838,6 +840,8 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                     case ROLL_DISENCHANT:
                         bot->GetAchievementMgr().UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_ROLL_GREED, 1);
                         break;
+                    default:
+                        break;
                 }
             }
             return;
@@ -917,6 +921,8 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
                             // bot->GetPlayerbotAI()->TellMaster("PlayerbotMgr:GOSSIP_OPTION_INNKEEPER");
                             break;
                         }
+                        default:
+                            break;
                     }
                 }
             }
@@ -967,6 +973,8 @@ void PlayerbotMgr::HandleMasterIncomingPacket(const WorldPacket& packet)
             }
             return;
         }
+        default:
+            break;
 
         /*
         case CMSG_NAME_QUERY:

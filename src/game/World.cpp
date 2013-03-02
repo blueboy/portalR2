@@ -47,7 +47,7 @@
 #include "MapManager.h"
 #include "ScriptMgr.h"
 #include "CreatureAIRegistry.h"
-#include "Policies/SingletonImp.h"
+#include "Policies/Singleton.h"
 #include "BattleGround/BattleGroundMgr.h"
 #include "Language.h"
 #include "OutdoorPvP/OutdoorPvP.h"
@@ -84,7 +84,7 @@ float World::m_MaxVisibleDistanceInFlight     = DEFAULT_VISIBILITY_DISTANCE;
 float World::m_VisibleUnitGreyDistance        = 0;
 float World::m_VisibleObjectGreyDistance      = 0;
 
-float  World::m_relocation_lower_limit_sq     = 10.f * 10.f;
+float  World::m_relocation_lower_limit        = 10.0f;
 uint32 World::m_relocation_ai_notify_delay    = 1000u;
 
 /// World constructor
@@ -471,7 +471,7 @@ void World::LoadConfigSettings(bool reload)
         setConfig(CONFIG_BOOL_VMSS_ENABLE, "fakeString", false);
     }
 #endif
- 
+
     setConfig(CONFIG_UINT32_VMSS_MAXTHREADBREAKS,     "VMSS.MaxThreadBreaks",5);
     setConfig(CONFIG_UINT32_VMSS_TBREMTIME,           "VMSS.ThreadBreakRememberTime",600);
     setConfig(CONFIG_UINT32_VMSS_MAPFREEMETHOD,       "VMSS.MapFreeMethod",1);
@@ -594,6 +594,8 @@ void World::LoadConfigSettings(bool reload)
 
     setConfigMinMax(CONFIG_UINT32_MAPUPDATE_MAXVISITORS, "MapUpdate.MaxVisitorsInUpdate", 9, 1, 50);
     setConfigMinMax(CONFIG_UINT32_MAPUPDATE_MAXVISITS, "MapUpdate.MaxVisitsInUpdate", 20, 10, 100);
+
+    setConfigMinMax(CONFIG_UINT32_POSITION_UPDATE_DELAY, "MapUpdate.PositionUpdateDelay", 400, 100, 2000);
 
     setConfigMinMax(CONFIG_UINT32_OBJECTLOADINGSPLITTER_ALLOWEDTIME, "ObjectLoadingSplitter.MaxAllowedTime", 10, 5, 1000);
 
@@ -904,7 +906,7 @@ void World::LoadConfigSettings(bool reload)
     setConfig(CONFIG_BOOL_ALLOW_FLIGHT_ON_OLD_MAPS, "AllowFlightOnOldMaps", false);
 
     m_relocation_ai_notify_delay = sConfig.GetIntDefault("Visibility.AIRelocationNotifyDelay", 1000u);
-    m_relocation_lower_limit_sq  = pow(sConfig.GetFloatDefault("Visibility.RelocationLowerLimit",10), 2);
+    m_relocation_lower_limit     = sConfig.GetFloatDefault("Visibility.RelocationLowerLimit", 10.0f);
 
     m_VisibleUnitGreyDistance = sConfig.GetFloatDefault("Visibility.Distance.Grey.Unit", 1);
     if (m_VisibleUnitGreyDistance >  MAX_VISIBILITY_DISTANCE)
@@ -1082,8 +1084,18 @@ void World::LoadConfigSettings(bool reload)
 
     // initialize chat logs (and lexics cutter)
     sChatLog.Initialize();
+
+    // calendar
+    int32 delayHours = sConfig.GetIntDefault("Calendar.RemoveExpiredEvents", -1);
+    setConfig(CONFIG_INT32_CALENDAR_REMOVE_EXPIRED_EVENTS_DELAY, delayHours < 0 ? -1 : delayHours * HOUR /*convert to sec.*/);
+
+    // resistance calculation options
+    setConfig(CONFIG_UINT32_RESIST_CALC_METHOD, "Resistance.CalculationMethod", 1);
+    setConfig(CONFIG_BOOL_RESIST_ADD_BY_OVER_LEVEL, "Resistance.AddByOverLevel", false);
 }
+
 extern void LoadGameObjectModelList();
+
 /// Initialize the World
 void World::SetInitialWorldSettings()
 {
@@ -1107,8 +1119,10 @@ void World::SetInitialWorldSettings()
         !MapManager::ExistMapAndVMap(0, 1676.35f, 1677.45f) ||
         !MapManager::ExistMapAndVMap(1, 10311.3f, 832.463f) ||
         !MapManager::ExistMapAndVMap(1,-2917.58f,-257.98f) ||
-        (m_configUint32Values[CONFIG_UINT32_EXPANSION] &&
-        (!MapManager::ExistMapAndVMap(530,10349.6f,-6357.29f) || !MapManager::ExistMapAndVMap(530,-3961.64f,-13931.2f))))
+        (m_configUint32Values[CONFIG_UINT32_EXPANSION] >= EXPANSION_TBC &&
+        (!MapManager::ExistMapAndVMap(530,10349.6f,-6357.29f) || !MapManager::ExistMapAndVMap(530,-3961.64f,-13931.2f))) ||
+        (m_configUint32Values[CONFIG_UINT32_EXPANSION] >= EXPANSION_WOTLK &&
+        !MapManager::ExistMapAndVMap(609,2355.84f,-5664.77f)))
     {
         sLog.outError("Correct *.map files not found in path '%smaps' or *.vmtree/*.vmtile files in '%svmaps'. Please place *.map and vmap files in appropriate directories or correct the DataDir value in the mangosd.conf file.",m_dataPath.c_str(),m_dataPath.c_str());
         Log::WaitBeforeContinueIfNeed();
@@ -1506,13 +1520,14 @@ void World::SetInitialWorldSettings()
     ///- Load and initialize scripts
     sLog.outString( "Loading Scripts..." );
     sLog.outString();
-    sScriptMgr.LoadQuestStartScripts();                         // must be after load Creature/Gameobject(Template/Data) and QuestTemplate
-    sScriptMgr.LoadQuestEndScripts();                           // must be after load Creature/Gameobject(Template/Data) and QuestTemplate
-    sScriptMgr.LoadSpellScripts();                              // must be after load Creature/Gameobject(Template/Data)
-    sScriptMgr.LoadGameObjectScripts();                         // must be after load Creature/Gameobject(Template/Data)
-    sScriptMgr.LoadGameObjectTemplateScripts();                 // must be after load Creature/Gameobject(Template/Data)
-    sScriptMgr.LoadEventScripts();                              // must be after load Creature/Gameobject(Template/Data)
-    sLog.outString( ">>> Scripts loaded" );
+    sScriptMgr.LoadQuestStartScripts();                     // must be after load Creature/Gameobject(Template/Data) and QuestTemplate
+    sScriptMgr.LoadQuestEndScripts();                       // must be after load Creature/Gameobject(Template/Data) and QuestTemplate
+    sScriptMgr.LoadSpellScripts();                          // must be after load Creature/Gameobject(Template/Data)
+    sScriptMgr.LoadGameObjectScripts();                     // must be after load Creature/Gameobject(Template/Data)
+    sScriptMgr.LoadGameObjectTemplateScripts();             // must be after load Creature/Gameobject(Template/Data)
+    sScriptMgr.LoadEventScripts();                          // must be after load Creature/Gameobject(Template/Data)
+    sScriptMgr.LoadCreatureDeathScripts();                  // must be after load Creature/Gameobject(Template/Data)
+    sLog.outString(">>> Scripts loaded");
     sLog.outString();
 
     sLog.outString( "Loading Scripts text locales..." );    // must be after Load*Scripts calls
@@ -2783,4 +2798,3 @@ bool World::IsDungeonMapIdDisable(uint32 mapId)
 {
     return disabledMapIdForDungeonFinder.find(mapId) != disabledMapIdForDungeonFinder.end();
 }
-
